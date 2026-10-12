@@ -1,0 +1,4 @@
+Built-in image_gen; transparent_background=true.
+Style reference: Revit MEP Tools Icon Grid - v3.png, supplied by user.
+
+Create ONE polished transparent-background app symbol for a Revit MEP Export BOM tool, matching the attached reference icon grid's warm architectural illustration style. Reference image #1 is style reference only, do not reproduce grid or labels. Subject: left an isometric cream/taupe building-model cube with a bronze pipe and rectangular duct inside a thin brown view-frame, center a compact bronze rightward arrow, right an ivory spreadsheet sheet with bronze header and a clean 3 by 4 grid. Warm beige, taupe, olive brown, dark chocolate outlines, soft dimensional highlights. Cohesive compact square composition, thick readable silhouettes suitable for 32px ribbon icon and 80px window header. Generous transparent margin, no background card, no surrounding glow, no text, no letters, no watermark. Single isolated emblem, not a contact sheet.

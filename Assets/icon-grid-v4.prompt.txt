@@ -1,0 +1,5 @@
+Built-in image_gen edit; transparent_background=false.
+Input 1: Revit MEP Tools Icon Grid - v3.png (existing grid).
+Input 2: bom-export-symbol.png (new symbol).
+
+undefined

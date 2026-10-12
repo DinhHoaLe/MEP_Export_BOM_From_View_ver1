@@ -1,0 +1,284 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="MEP BOM Studio" Width="1220" Height="860" MinWidth="1060" MinHeight="820"
+        WindowStartupLocation="CenterOwner" WindowStyle="None" ResizeMode="CanResize"
+        Background="#F5F2EE" FontFamily="Segoe UI" FontSize="13">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="62" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/>
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <SolidColorBrush x:Key="Accent" Color="#90805C"/>
+        <SolidColorBrush x:Key="AccentDark" Color="#6F6044"/>
+        <SolidColorBrush x:Key="ButtonBrush" Color="#62543C"/>
+        <SolidColorBrush x:Key="Ink" Color="#37322B"/>
+        <SolidColorBrush x:Key="Muted" Color="#716B63"/>
+        <SolidColorBrush x:Key="Line" Color="#DDD6CE"/>
+        <SolidColorBrush x:Key="Surface" Color="#F5F2EE"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E8E2DA"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#37322B"/>
+        <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="16"/><Setter Property="Padding" Value="20"/>
+        </Style>
+        <Style x:Key="Field" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Margin" Value="0,0,0,7"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="36"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="White"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+                <Border x:Name="surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7">
+                    <Grid>
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                        <TextBlock x:Name="watermark" Text="{TemplateBinding Tag}" Foreground="{StaticResource Muted}" Margin="10,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="surface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+                    <Trigger Property="Text" Value=""><Setter TargetName="watermark" Property="Visibility" Value="Visible"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="9,6"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBox">
+                <Grid>
+                    <ToggleButton x:Name="toggle" Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                        <ToggleButton.Template><ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="surface" Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7">
+                                <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource Muted}" StrokeThickness="1.4" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            </Border>
+                            <ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger></ControlTemplate.Triggers>
+                        </ControlTemplate></ToggleButton.Template>
+                    </ToggleButton>
+                    <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="10,5,32,5" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False" PopupAnimation="Slide">
+                        <Border Background="White" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="0,4,0,0" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}" MaxHeight="280">
+                            <ScrollViewer CanContentScroll="True"><ItemsPresenter/></ScrollViewer>
+                        </Border>
+                    </Popup>
+                </Grid>
+                <ControlTemplate.Triggers><Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Padding" Value="9,8"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
+                <Border x:Name="surface" Background="White" Padding="{TemplateBinding Padding}" CornerRadius="5"><ContentPresenter/></Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="surface" Property="Background" Value="#F2EEE9"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="surface" Property="Background" Value="#E8E2DA"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource ButtonBrush}"/><Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="18,10"/><Setter Property="MinWidth" Value="110"/><Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/><Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border x:Name="surface" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#514631"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="surface" Property="Background" Value="#C2C6C5"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+            <Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border x:Name="surface" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#EEE8E1"/></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="surface" Property="Opacity" Value="0.45"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="ChipButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Padding" Value="12,6"/><Setter Property="MinWidth" Value="56"/><Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Width" Value="42"/><Setter Property="Height" Value="34"/><Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/><Setter Property="Background" Value="{StaticResource Surface}"/>
+            <Setter Property="Margin" Value="4,0,0,0"/>
+        </Style>
+        <Style x:Key="CategoryCheck" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="9,9"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
+                <Border x:Name="surface" CornerRadius="8" Padding="{TemplateBinding Padding}" Background="Transparent">
+                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Border x:Name="marker" Width="18" Height="18" CornerRadius="4" Background="White" BorderBrush="#B3A491" BorderThickness="1.4" VerticalAlignment="Center">
+                            <TextBlock x:Name="mark" Text="✓" Foreground="White" FontSize="13" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" Margin="0,-2,0,0"/>
+                        </Border>
+                        <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#F2EEE9"/></Trigger>
+                    <Trigger Property="IsChecked" Value="True">
+                        <Setter TargetName="surface" Property="Background" Value="#F2EEE9"/>
+                        <Setter TargetName="marker" Property="Background" Value="{StaticResource AccentDark}"/>
+                        <Setter TargetName="marker" Property="BorderBrush" Value="{StaticResource AccentDark}"/>
+                        <Setter TargetName="mark" Property="Visibility" Value="Visible"/>
+                    </Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="Foreground" Value="{StaticResource Muted}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="12,0"/><Setter Property="Height" Value="42"/><Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="12,0"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridCell">
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center"/></Border>
+            </ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers><Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="Transparent"/></Trigger></Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="White"/><Setter Property="MinHeight" Value="42"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridRow">
+                <Border x:Name="surface" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" CornerRadius="8" Margin="2,2">
+                    <DataGridCellsPresenter/>
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#F2EEE9"/></Trigger>
+                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="surface" Property="Background" Value="#E8E2DA"/></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+    </Window.Resources>
+    <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1">
+        <Grid><Grid.RowDefinitions><RowDefinition Height="62"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+            <Grid Margin="24,0,18,0"><Grid.ColumnDefinitions><ColumnDefinition Width="48"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Image x:Name="HeaderSymbol" Width="42" Height="42"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <TextBlock Text="MEP BOM Studio" FontSize="15" FontWeight="SemiBold"/>
+                    <TextBlock Text="REVIT 2023  /  EXPORT FROM VIEW" FontSize="10" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeButton" Content="─" Style="{StaticResource ChromeButton}" ToolTip="Minimize"/>
+                    <Button x:Name="MaximizeButton" Content="□" Style="{StaticResource ChromeButton}" ToolTip="Maximize / restore"/>
+                    <Button x:Name="CloseButton" Content="✕" Style="{StaticResource ChromeButton}" ToolTip="Close"/>
+                </StackPanel>
+            </Grid>
+            <Grid Grid.Row="1" Margin="28,8,28,22">
+                <Grid.RowDefinitions><RowDefinition Height="88"/><RowDefinition Height="*"/><RowDefinition Height="16"/><RowDefinition Height="132"/><RowDefinition Height="56"/></Grid.RowDefinitions>
+                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="VIEW → BILL OF MATERIALS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentDark}"/>
+                        <TextBlock Text="Build your material overview" FontSize="27" FontWeight="SemiBold" Margin="0,6,0,5"/>
+                        <TextBlock x:Name="ModelText" Text="Choose a scope, select categories and review quantities." Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <Button x:Name="PreviewButton" Grid.Column="1" Content="Preview BOM  →" Style="{StaticResource PrimaryButton}" IsEnabled="False" VerticalAlignment="Center"/>
+                </Grid>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="310"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="176"/><RowDefinition Height="14"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Border Style="{StaticResource Card}"><StackPanel>
+                            <TextBlock Text="01  /  EXPORT SCOPE" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
+                            <ComboBox x:Name="ScopeCombo" Margin="0,4,0,12">
+                                <ComboBoxItem Content="Entire Model"/><ComboBoxItem Content="3D View"/><ComboBoxItem Content="Floor Plan"/><ComboBoxItem Content="Scope Box"/>
+                            </ComboBox>
+                            <TextBlock Text="VIEW / SCOPE BOX" Style="{StaticResource Field}"/>
+                            <ComboBox x:Name="TargetCombo" DisplayMemberPath="Name"/>
+                        </StackPanel></Border>
+                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="14">
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <Grid Margin="5,0,5,10"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="02  /  CATEGORIES" Style="{StaticResource Field}" Margin="0" Foreground="{StaticResource AccentDark}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="CategoryCountText" Grid.Column="1" Text="" FontSize="11" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBox x:Name="CategorySearch" Grid.Row="1" Tag="Search categories…" Margin="0,0,0,9" ToolTip="Search categories in the selected scope"/>
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,7">
+                                    <Button x:Name="MepButton" Content="MEP" Style="{StaticResource ChipButton}" Margin="0,0,6,0"/>
+                                    <Button x:Name="AllButton" Content="All" Style="{StaticResource ChipButton}" Margin="0,0,6,0"/>
+                                    <Button x:Name="NoneButton" Content="None" Style="{StaticResource ChipButton}"/>
+                                </StackPanel>
+                                <Grid Grid.Row="3">
+                                    <ListBox x:Name="CategoryList" BorderThickness="0" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                                        <ListBox.ItemTemplate><DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CategoryCheck}">
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" VerticalAlignment="Center"/>
+                                                </CheckBox>
+                                        </DataTemplate></ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock x:Name="EmptyCategories" Text="Click Preview BOM to load categories." Foreground="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10"/>
+                                </Grid>
+                                <TextBlock Grid.Row="4" Text="Only categories with elements in this scope." FontSize="10" Foreground="{StaticResource Muted}" Margin="5,7,0,0"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                    <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="76"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center"><TextBlock Text="03  /  BOM PREVIEW" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/><TextBlock x:Name="PreviewTitleText" Text="Review before you export" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock x:Name="ElementMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="ELEMENTS" Style="{StaticResource Field}"/></StackPanel>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock x:Name="RowMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="BOM ROWS" Style="{StaticResource Field}"/></StackPanel>
+                            </Grid>
+                            <Grid Grid.Row="1">
+                                <DataGrid x:Name="BomGrid" Background="White" BorderThickness="0" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="None" SelectionUnit="FullRow" RowHeight="42" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="#" Binding="{Binding No}" Width="36"/>
+                                        <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="115"/>
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="125"/>
+                                        <DataGridTextColumn Header="System" Binding="{Binding System}" Width="90"/>
+                                        <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="130"/>
+                                        <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="50"/>
+                                        <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat={}{0:N3}}" Width="85"/>
+                                        <DataGridTextColumn Header="Count" Binding="{Binding ElementCount}" Width="60"/>
+                                        <DataGridTextColumn Header="Family" Binding="{Binding Family}" Width="130"/>
+                                        <DataGridTextColumn Header="Element IDs" Binding="{Binding ElementIds}" Width="160"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <StackPanel x:Name="EmptyPreview" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20">
+                                    <Image x:Name="PreviewSymbol" Width="116" Height="116" Opacity="0.85"/>
+                                    <TextBlock Text="Your BOM starts with a view" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,6"/>
+                                    <TextBlock Text="Choose your scope and view, then click Preview BOM." Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Grid>
+                            <TextBlock Grid.Row="2" Text="MEP curves in meters  ·  Other elements in pieces  ·  Full element quantities" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+                <Border Grid.Row="3" Style="{StaticResource Card}">
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="04  /  EXCEL OUTPUT" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
+                            <CheckBox x:Name="CategorySheetsCheck" Grid.Column="1" Content="Separate sheet per category" IsChecked="True" Style="{StaticResource CategoryCheck}" Padding="4,0" FontSize="11"/>
+                        </Grid>
+                        <Grid Grid.Row="1" Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="82"/><ColumnDefinition Width="64"/><ColumnDefinition Width="160"/><ColumnDefinition Width="105"/></Grid.ColumnDefinitions>
+                            <StackPanel><TextBlock Text="TEMPLATE .XLSX  /  LEAVE EMPTY FOR DEFAULT FORM" Style="{StaticResource Field}"/><TextBox x:Name="TemplatePath" IsReadOnly="True"/></StackPanel>
+                            <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Style="{StaticResource ChipButton}" Margin="8,20,0,0" VerticalAlignment="Top" Height="36"/>
+                            <Button x:Name="ClearTemplateButton" Grid.Column="2" Content="Clear" Style="{StaticResource ChipButton}" Margin="8,20,0,0" VerticalAlignment="Top" Height="36"/>
+                            <StackPanel Grid.Column="3" Margin="14,0,0,0"><TextBlock Text="SHEET  /  BLANK = FIRST" Style="{StaticResource Field}"/><TextBox x:Name="SheetName"/></StackPanel>
+                            <StackPanel Grid.Column="4" Margin="14,0,0,0"><TextBlock Text="DATA ROW" Style="{StaticResource Field}"/><TextBox x:Name="FirstDataRow" Text="6"/></StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+                <Grid Grid.Row="4" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusText" Foreground="{StaticResource AccentDark}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,18,0" Text="Choose your scope and categories."/>
+                    <Button x:Name="NotesButton" Grid.Column="1" Content="Notes" Style="{StaticResource SecondaryButton}" IsEnabled="False" MinWidth="70"/>
+                    <Button x:Name="ModifyTitleButton" Grid.Column="3" Content="Modify Title" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Edit the BOM title, headings and fields. Required common fields cannot be removed."/>
+                    <Button x:Name="CreateScheduleButton" Grid.Column="5" Content="Create Revit Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Name one entire-model schedule for each selected category; uses default Revit fields and closes this tool after acceptance."/>
+                    <Button x:Name="ExportButton" Grid.Column="7" Content="Export Excel  ↗" Style="{StaticResource PrimaryButton}" IsEnabled="False" MinWidth="146"/>
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

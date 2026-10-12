@@ -1,0 +1,14 @@
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFrameworkVersion>v4.8</TargetFrameworkVersion><LangVersion>7.3</LangVersion>
+    <OutputPath>..\obj\UiPreview\</OutputPath><IntermediateOutputPath>..\obj\UiPreview\Intermediate\</IntermediateOutputPath>
+    <AssemblyName>UiPreview</AssemblyName><PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Xml"/>
+    <Reference Include="PresentationFramework"/><Reference Include="PresentationCore"/><Reference Include="WindowsBase"/><Reference Include="System.Xaml"/>
+    <Compile Include="..\Models.cs"/><Compile Include="..\BomColumns.cs"/><Compile Include="..\UI\ConfigurationDialogs.cs"/><Compile Include="UiPreview.cs"/>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
