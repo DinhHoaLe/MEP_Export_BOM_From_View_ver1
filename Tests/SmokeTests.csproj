@@ -13,6 +13,7 @@
     <Reference Include="System.Xml.Linq" /><Reference Include="System.IO.Compression" /><Reference Include="System.IO.Compression.FileSystem" /><Reference Include="System.Runtime.Serialization" />
     <Compile Include="..\Models.cs" /><Compile Include="..\BomColumns.cs" /><Compile Include="..\BomAggregator.cs" /><Compile Include="..\ExcelExporter.cs" />
     <Compile Include="..\PreviewSettings.cs" /><Compile Include="..\StudioState.cs" /><Compile Include="SmokeTests.cs" />
+    <Compile Include="..\ImportSelection.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

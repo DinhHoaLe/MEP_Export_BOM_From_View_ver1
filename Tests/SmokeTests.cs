@@ -210,7 +210,7 @@ internal static class SmokeTests
             ExpectFailure(() => StudioState.ColumnNumber("XFE"), "Out-of-range template columns must be rejected.");
             var mappedResult = new BomResult { Model = "Mapping", Scope = "Test", Elements = result.Elements, Rows = result.Rows, Layout = result.Layout.Clone(), TemplateTotalRow = 20 };
             mappedResult.TemplateMapping = mappedResult.Layout.Columns.Select((c, i) => new TemplateMapping { Field = c.Key, Heading = c.Header, Column = ((char)('B' + i * 2)).ToString() }).ToList();
-            string mappedTemplate = Path.Combine(folder, "Mapping_Template.xlsx"); File.Copy(basic, mappedTemplate);
+            string mappedTemplate = Path.Combine(folder, "Mapping_Template.xlsx"); File.Copy(basic, mappedTemplate, true);
             using (var archive = ZipFile.Open(mappedTemplate, ZipArchiveMode.Update)) {
                 string path = SheetPath(archive, "BOM"); var sheetDoc = Read(archive, path); var sheetData = sheetDoc.Root.Element(S + "sheetData"); sheetData.Elements(S + "row").Where(r => (int)r.Attribute("r") >= 6).Remove();
                 sheetData.Add(new XElement(S + "row", new XAttribute("r", 6), new XElement(S + "c", new XAttribute("r", "A6"), new XElement(S + "f", "1+1")))); Write(archive, path, sheetDoc);
@@ -220,7 +220,49 @@ internal static class SmokeTests
                 var sheetDoc = Read(archive, SheetPath(archive, "BOM")); Check(sheetDoc.Descendants(S + "c").Single(c => (string)c.Attribute("r") == "A6").Element(S + "f").Value == "1+1", "Unmapped formula column was overwritten.");
                 Check(sheetDoc.Descendants(S + "c").Any(c => (string)c.Attribute("r") == "P20" && c.Element(S + "v") != null), "Mapped total row missing."); ValidatePackage(archive);
             }
-            Console.WriteLine("PASS: " + checks + " checks (BOM, XLSX/templates/mapping, source identities, snapshots/presets, quality, queries and schedule names).");
+            var importedBook = ImportSelection.Read(basic);
+            Check(importedBook.Count >= 3 && importedBook[0].Name == "BOM", "Excel import failed to read worksheets.");
+            var importLayout = new BomLayout(); importLayout.Columns.Single(c => c.Key == "Type").Header = "Equipment type";
+            var importFields = ImportSelection.Fields(importLayout, new[] { new ParameterField { Key = "param:diameter", Name = "Diameter", IsNumeric = true }, new ParameterField { Key = "param:mark", Name = "Mark" } });
+            Check(ImportSelection.Resolve("equipment TYPE", importFields).Key == "Type", "Custom BOM heading must resolve to its field.");
+            Check(ImportSelection.GuessHeader(importedBook[0], importFields) == 5, "Excel metadata rows must not be used as headers.");
+            string paddedKeys = Path.Combine(folder, "Padded_Keys.xlsx"); File.Copy(basic, paddedKeys, true);
+            using (var archive = ZipFile.Open(paddedKeys, ZipArchiveMode.Update))
+            {
+                var styles = Read(archive, "xl/styles.xml");
+                styles.Root.AddFirst(new XElement(S + "numFmts", new XAttribute("count", 1), new XElement(S + "numFmt", new XAttribute("numFmtId", 164), new XAttribute("formatCode", "000"))));
+                var xfs = styles.Root.Element(S + "cellXfs"); int index = xfs.Elements().Count();
+                xfs.Add(new XElement(S + "xf", new XAttribute("numFmtId", 164), new XAttribute("fontId", 0), new XAttribute("fillId", 0), new XAttribute("borderId", 0))); xfs.SetAttributeValue("count", index + 1); Write(archive, "xl/styles.xml", styles);
+                var path = SheetPath(archive, "BOM"); var data = Read(archive, path);
+                var cell = data.Descendants(S + "c").Single(c => (string)c.Attribute("r") == "A6"); cell.RemoveNodes(); cell.Attribute("t")?.Remove(); cell.SetAttributeValue("s", index); cell.Add(new XElement(S + "v", 1)); Write(archive, path, data);
+            }
+            Check(ImportSelection.Read(paddedKeys)[0].Rows.Single(r => r.Number == 6).Cells[0] == "001", "Excel zero-padded identifier formatting must be preserved.");
+            var selectionRecords = new List<ElementRecord> { Record(1001, 10, "S", "a", 1), Record(1002, 10, "S", "a", 2), Record(1003, 10, "S", "a", 3) };
+            selectionRecords[0].Type = "CHW"; selectionRecords[1].Type = "CHW"; selectionRecords[2].Type = "HWS";
+            selectionRecords[0].ExtraValues["param:diameter"] = "50 mm"; selectionRecords[1].ExtraValues["param:diameter"] = "50.000 mm"; selectionRecords[2].ExtraValues["param:diameter"] = "100 mm";
+            selectionRecords[0].ExtraValues["param:mark"] = "001";
+            var csv = ImportSelection.ReadCsv("Equipment type,Other\r\nCHW,ignored\r\nchw,also ignored\r\nmissing,x\r\n,blank\r\n");
+            var matched = ImportSelection.Match(csv, 1, 0, ImportSelection.Resolve("Equipment type", importFields), selectionRecords);
+            Check(matched.Identities.Count == 2 && matched.Rows.Count == 3 && matched.Rows.Count(r => r.Matches == 0) == 1, "Single-key matches must union rows, deduplicate instances and report unmatched values.");
+            Check(ImportSelection.Match(ImportSelection.ReadCsv("Type\nabsent"), 1, 0, ImportSelection.Resolve("Type", importFields), selectionRecords).Identities.Count == 0, "Zero-match import must stay empty.");
+            var numericMatch = ImportSelection.Match(ImportSelection.ReadCsv("Diameter\n50\n0.05 m\n"), 1, 0, ImportSelection.Resolve("Diameter", importFields), selectionRecords);
+            Check(numericMatch.Identities.Count == 2 && numericMatch.Rows.All(r => r.Matches == 2), "Numeric values/project display units and explicit unit conversion failed.");
+            Check(ImportSelection.Match(ImportSelection.ReadCsv("Mark\n1"), 1, 0, ImportSelection.Resolve("Mark", importFields), selectionRecords).Identities.Count == 0, "Text keys must preserve leading zeros.");
+            var idsCsv = ImportSelection.ReadCsv("Element IDs\r\n\"1001, 1003\"\r\n");
+            Check(ImportSelection.Match(idsCsv, 1, 0, ImportSelection.Resolve("Element IDs", importFields), selectionRecords).Identities.Count == 2, "BOM Element IDs list must select its individual instances.");
+            var quotes = ImportSelection.ReadCsv("Key;Other\r\n\"a; b\";\"line 1\nline \"\"2\"\"\"\r\n");
+            Check(quotes.Rows.Count == 2 && quotes.Rows[1].Cells[0] == "a; b" && quotes.Rows[1].Cells[1] == "line 1\nline \"2\"", "Semicolon/quoted CSV and multiline values were corrupted.");
+            ExpectFailure(() => ImportSelection.ReadCsv("Key\n\"unclosed"), "Malformed CSV must be rejected.");
+            Check(ImportSelection.Fingerprint(new[] { "b", "a" }) == ImportSelection.Fingerprint(new[] { "a", "b" }), "Import snapshot signature must be deterministic.");
+            var nativeClone = new NativeScheduleOptions { Title = "Preview", ScopeElementIds = new List<int> { 1 }, Fields = new List<NativeField> { new NativeField { Key = "key", Heading = "Preview heading" } } };
+            var creationClone = nativeClone.Clone(); creationClone.ScopeElementIds.Add(2); creationClone.Fields[0].Heading = "Changed";
+            Check(nativeClone.ScopeElementIds.Count == 1 && nativeClone.Fields[0].Heading == "Preview heading", "Schedule creation must use an independent frozen options snapshot.");
+            var compact = new BomLayout { Columns = BomLayout.CompactColumns() }; compact.Validate();
+            Check(compact.Columns.Where(c => c.IsVisible).Select(c => c.Key).SequenceEqual(new[] { "No", "Category", "Family", "Type", "ElementCount", "ElementIds" }), "Compact view must keep the Element IDs action while hiding System, Size, Unit and Quantity.");
+            Check(compact.Columns.Single(c => c.Key == "Unit").CanHide && compact.Columns.Single(c => c.Key == "Quantity").IsRequired, "Required Unit/Quantity must be hideable, not removable.");
+            var quantityColumn = compact.Columns.Single(c => c.Key == "Quantity"); quantityColumn.IsVisible = true; compact.Validate();
+            Check(compact.Values(new BomRow { Quantity = 12.5 }).Contains(12.5), "Showing hidden quantity must retain its numeric value.");
+            Console.WriteLine("PASS: " + checks + " checks (BOM/Excel, import, schedule configuration and compact visibility).");
             Console.WriteLine("Fixtures: " + folder);
             return 0;
         }

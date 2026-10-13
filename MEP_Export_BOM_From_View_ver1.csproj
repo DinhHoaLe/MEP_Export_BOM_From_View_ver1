@@ -69,6 +69,12 @@
     <Compile Include="Models.cs" />
     <Compile Include="PreviewSettings.cs" />
     <Compile Include="StudioState.cs" />
+    <Compile Include="ImportSelection.cs" />
+    <Compile Include="UI\ImportSelectionTools.cs" />
+    <Compile Include="UI\ImportSelectionDialog.cs" />
+    <Compile Include="UI\ElementProperties.cs" />
+    <Compile Include="UI\BomPropertiesTools.cs" />
+    <Compile Include="UI\ElementIdList.cs" />
     <Compile Include="ScopeScheduleMarker.cs" />
     <Compile Include="BomColumns.cs" />
     <Compile Include="UI\ConfigurationDialogs.cs" />

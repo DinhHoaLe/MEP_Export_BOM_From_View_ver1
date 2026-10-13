@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -25,7 +26,7 @@ internal static class UiPreview
             var errors = new StringWriter();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new TextWriterTraceListener(errors));
             PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Warning;
-            foreach (string state in new[] { "empty", "preview", "minimum", "schedule" })
+            foreach (string state in new[] { "empty", "preview", "minimum", "schedule", "excel" })
             {
                 Window window;
                 using (var stream = assembly.GetManifestResourceStream("BomWindow.xaml"))
@@ -77,13 +78,27 @@ internal static class UiPreview
                     var rows = new List<BomRow>();
                     for (int i = 1; i <= 8; i++) rows.Add(new BomRow { No = i, Category = i < 4 ? "Pipes" : "Ducts", Family = i < 4 ? "Pipe Types" : "Rectangular Duct", Type = i < 4 ? "CHW - Steel" : "Galvanized", System = i < 4 ? "CHWS" : "Supply Air", Size = i < 4 ? "D=50 mm" : "W=400; H=200 mm", Unit = "m", Quantity = 48.235, ElementCount = 12, ElementIds = "12345, 12346" });
                     Find<DataGrid>(window, "BomGrid").ItemsSource = rows;
+                    foreach (var column in Find<DataGrid>(window, "BomGrid").Columns.OfType<DataGridTextColumn>())
+                    {
+                        string path = (column.Binding as Binding)?.Path?.Path;
+                        if (new[] { "System", "Size", "Unit", "Quantity", "ElementIds" }.Contains(path)) column.Visibility = Visibility.Collapsed;
+                    }
+                    Find<DataGrid>(window, "BomGrid").Columns.Add(ConfigurationDialogs.ElementIdColumn(window));
                     Find<Button>(window, "CreateScheduleButton").IsEnabled = true;
                     Find<Button>(window, "ModifyTitleButton").IsEnabled = true;
-                    foreach (string name in new[] { "BomQueryButton", "ScheduleTitleButton", "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(window, name).IsEnabled = true;
+                    foreach (string name in new[] { "BomQueryButton", "ScheduleQueryButton", "ExportSchedulesButton", "ImportSelectionButton" }) Find<Button>(window, name).IsEnabled = true;
                 }
                 else Find<TextBlock>(window, "StatusText").Text = "Choose a scope and view, then click Preview BOM to load categories.";
                 var tabs = Find<TabControl>(window, "PreviewTabs");
-                if (tabs.Items.Count != 2) throw new Exception("Both preview tabs are required.");
+                if (tabs.Items.Count != 3) throw new Exception("BOM, Schedule and Excel/CSV tabs are required.");
+                bool scheduleTab = state == "schedule", excelTab = state == "excel";
+                Find<TextBlock>(window, "PreviewTitleText").Text = excelTab ? "Excel output and element selection" : scheduleTab ? "BOM - Pipes" : "MEP BILL OF MATERIALS";
+                Find<Button>(window, "ModifyTitleButton").Visibility = excelTab ? Visibility.Collapsed : Visibility.Visible;
+                Find<Button>(window, "ModifyTitleButton").Content = scheduleTab ? "Modify Schedule Title" : "Modify BOM Title";
+                Find<Button>(window, "CreateScheduleButton").Visibility = scheduleTab ? Visibility.Visible : Visibility.Collapsed;
+                Find<Button>(window, "ExportSchedulesButton").Visibility = scheduleTab ? Visibility.Visible : Visibility.Collapsed;
+                Find<Button>(window, "ExportButton").Visibility = scheduleTab ? Visibility.Collapsed : Visibility.Visible;
+                if (excelTab) tabs.SelectedIndex = 2;
                 if (state == "schedule")
                 {
                     tabs.SelectedIndex = 1;
@@ -108,7 +123,7 @@ internal static class UiPreview
                 using (var output = File.Create(Path.Combine(folder, state + ".png"))) encoder.Save(output);
                 var check = Find<ListBox>(window, "CategoryList");
                 int expected = state == "empty" ? 0 : 7;
-                if (check.Items.Count != expected || check.ActualHeight < 80 || Find<Button>(window, "ExportButton").ActualWidth < 100)
+                if (check.Items.Count != expected || check.ActualHeight < 80 || (!scheduleTab && Find<Button>(window, "ExportButton").ActualWidth < 100))
                     throw new Exception("Layout is clipped: " + state);
                 if (state == "empty" && (Find<ComboBox>(window, "ScopeCombo").SelectedIndex != -1 || Find<ComboBox>(window, "TargetCombo").Items.Count != 0 || Find<Button>(window, "CreateScheduleButton").IsEnabled))
                     throw new Exception("Initial state contains preloaded selections.");
@@ -143,6 +158,35 @@ internal static class UiPreview
                     var selection = ConfigurationDialogs.BuildScheduleSelection(window, new List<ScheduleRequest> { new ScheduleRequest { CategoryName = "Pipes", ScheduleName = "BOM - Pipes" }, new ScheduleRequest { CategoryName = "Ducts", ScheduleName = "BOM - Ducts" } }); Capture(selection, folder, "schedule-select", 820, 580); selection.Close();
                     var measurements = ConfigurationDialogs.BuildMeasurements(window, new List<MeasurementRule> { new MeasurementRule { Category = "Pipes", Method = "Length" }, new MeasurementRule { Category = "Walls", Method = "Area" } }, accepted => { }); Capture(measurements, folder, "measurements", 800, 600); measurements.Close();
                     var mapping = ConfigurationDialogs.BuildMapping(window, BomLayout.Defaults(), new List<TemplateMapping>(), 20, (accepted, total) => { }); Capture(mapping, folder, "template-mapping", 820, 660); mapping.Close();
+                    var imported = ConfigurationDialogs.BuildImportWindow(window, new[] { ImportSelection.ReadCsv("Type,Comments\nCHW,example\nHWS,second\nmissing,unmatched") },
+                        ImportSelection.Fields(new BomLayout(), new ParameterField[0]), new[] { new ElementRecord { ElementId = 1, Type = "CHW" }, new ElementRecord { ElementId = 2, Type = "HWS" } }, (matches, label) => { });
+                    var importMatchButton = Descendants<Button>((DependencyObject)imported.Content).First(b => Convert.ToString(b.Content) == "Match / Preview");
+                    importMatchButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    var importTable = Descendant<DataGrid>((DependencyObject)imported.Content);
+                    if (importTable.Items.Count != 3 || !Descendants<Button>((DependencyObject)imported.Content).First(b => Convert.ToString(b.Content) == "Apply selection").IsEnabled)
+                        throw new Exception("Import preview did not enable applying a validated match.");
+                    Capture(imported, folder, "import-selection", 1000, 680); imported.Close();
+                    var properties = ConfigurationDialogs.BuildPropertiesWindow(window, new[]
+                    { new ElementRecord { ElementId = 12345, Family = "Pipe Types", Type = "CHW - Steel", SourceName = "Office Building - MEP" },
+                      new ElementRecord { ElementId = 12346, Family = "Pipe Types", Type = "CHW - Steel", SourceName = "Office Building - MEP" } }, record => new List<ElementProperty>
+                    {
+                        new ElementProperty { Group = "Identity", Name = "Element ID", Value = record.ElementId.ToString(), Access = "Read-only" },
+                        new ElementProperty { Group = "Identity", Name = "Category", Value = "Pipes", Access = "Read-only" },
+                        new ElementProperty { Group = "BOM", Name = "System", Value = "CHWS", Access = "Read-only" },
+                        new ElementProperty { Group = "BOM", Name = "Size", Value = "D=50 mm", Access = "Read-only" },
+                        new ElementProperty { Group = "BOM", Name = "Quantity", Value = "48.235", Access = "Read-only" },
+                        new ElementProperty { Group = "BOM", Name = "Unit", Value = "m", Access = "Read-only" },
+                        new ElementProperty { Group = "Instance", Name = "Diameter", Value = "50 mm", Access = "Edit in Revit" },
+                        new ElementProperty { Group = "Instance", Name = "Length", Value = "48.235 m", Access = "Read-only" },
+                        new ElementProperty { Group = "Type", Name = "Material", Value = "Steel", Access = "Edit in Revit" }
+                    });
+                    Capture(properties, folder, "element-properties", 980, 720); properties.Close();
+                    var ids = ConfigurationDialogs.BuildElementIdsWindow(window, new[] {
+                        new ElementRecord { ElementId = 12345, SourceName = "Host · Office MEP", Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-host-12345" },
+                        new ElementRecord { ElementId = 12346, SourceName = "Host · Office MEP", Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-host-12346" },
+                        new ElementRecord { ElementId = 12345, SourceName = "Link · Tower MEP", LinkInstanceId = 901, Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-link-12345" }
+                    }, record => { }, records => { });
+                    Capture(ids, folder, "element-id-list", 1040, 650); ids.Close();
                     var comparison = ConfigurationDialogs.BuildChanges(window, new List<BomChange> { new BomChange { Change = "Added", Source = "Host", Element = "123", Category = "Pipes", After = "CHW · 50 mm · 4 m", Unit = "m", Delta = 4 } }, () => { }); Capture(comparison, folder, "comparison", 1100, 680); comparison.Close();
                 }
                 window.Close();
@@ -175,5 +219,11 @@ internal static class UiPreview
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
         { var child = VisualTreeHelper.GetChild(node, i); if (child is T) return (T)child; var match = Descendant<T>(child); if (match != null) return match; }
         return null;
+    }
+    private static IEnumerable<T> Descendants<T>(DependencyObject node) where T : DependencyObject
+    {
+        if (node is T) yield return (T)node;
+        foreach (var child in LogicalTreeHelper.GetChildren(node).OfType<DependencyObject>())
+            foreach (var match in Descendants<T>(child)) yield return match;
     }
 }

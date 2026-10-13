@@ -11,6 +11,10 @@
     <Reference Include="System.Runtime.Serialization"/>
     <Compile Include="..\Models.cs"/><Compile Include="..\BomColumns.cs"/><Compile Include="..\BomAggregator.cs"/><Compile Include="..\PreviewSettings.cs"/><Compile Include="..\UI\ConfigurationDialogs.cs"/><Compile Include="UiPreview.cs"/>
     <Compile Include="..\StudioState.cs"/><Compile Include="..\UI\StudioDialogs.cs"/>
+    <Compile Include="..\ImportSelection.cs"/><Compile Include="..\UI\ImportSelectionDialog.cs"/>
+    <Compile Include="..\UI\ElementProperties.cs"/>
+    <Compile Include="..\UI\ElementIdList.cs"/>
+    <Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/><Reference Include="System.Xml.Linq"/>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

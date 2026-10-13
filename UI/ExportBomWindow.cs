@@ -46,7 +46,7 @@ namespace MEP_Export_BOM_From_View_ver1
         private readonly Dictionary<int, System.Data.DataTable> scheduleTables = new Dictionary<int, System.Data.DataTable>();
         private bool updating;
         private bool categoriesLoaded;
-        private BomLayout layout = new BomLayout();
+        private BomLayout layout = new BomLayout { Columns = BomLayout.CompactColumns() };
         private List<MeasurementRule> measurementRules = new List<MeasurementRule>();
         private List<TemplateMapping> templateMapping = new List<TemplateMapping>();
         private int templateTotalRow;
@@ -85,14 +85,19 @@ namespace MEP_Export_BOM_From_View_ver1
             Find<Button>("AllButton").Click += (s, e) => SetSelection("All");
             Find<Button>("NoneButton").Click += (s, e) => SetSelection("None");
             previewButton.Click += (s, e) => Preview();
+            grid.MouseDoubleClick += (s, e) => ShowBomProperties(e);
+            grid.AddHandler(Button.ClickEvent, new RoutedEventHandler(ViewElementIds));
             Find<TabControl>("PreviewTabs").SelectionChanged += (s, e) =>
-            { if (e.Source == Find<TabControl>("PreviewTabs")) { Find<Button>("HighlightButton").IsEnabled = result != null && Find<TabControl>("PreviewTabs").SelectedIndex == 0; if (Find<TabControl>("PreviewTabs").SelectedIndex == 1) PreviewSchedule(); } };
+            { if (e.Source == Find<TabControl>("PreviewTabs")) { if (Find<TabControl>("PreviewTabs").SelectedIndex == 1) PreviewSchedule(); UpdateTabActions(); } };
             Find<ComboBox>("ScheduleCategoryCombo").SelectionChanged += (s, e) => PreviewSchedule();
             exportButton.Click += (s, e) => Export();
             notesButton.Click += (s, e) => ShowNotes();
             Find<Button>("CreateScheduleButton").Click += (s, e) => { try { RequestSchedule(); } catch (Exception ex) { MessageBox.Show(window, ex.Message, "Create schedules"); } };
-            Find<Button>("ModifyTitleButton").Click += (s, e) => ModifyTitle();
-            Find<Button>("ScheduleTitleButton").Click += (s, e) => ModifyScheduleTitle();
+            Find<Button>("ModifyTitleButton").Click += (s, e) =>
+            { int tab = Find<TabControl>("PreviewTabs").SelectedIndex; if (tab == 0) ModifyTitle(); else if (tab == 1) ModifyScheduleTitle(); };
+            Find<Button>("TemplateMappingButton").Click += (s, e) => EditMapping();
+            Find<Button>("ImportSelectionButton").Click += (s, e) => ImportElements();
+            Find<Button>("ClearImportButton").Click += (s, e) => ClearImportedSelection(true);
             Find<Button>("BomQueryButton").Click += (s, e) => ConfigureBomQuery();
             Find<Button>("ScheduleQueryButton").Click += (s, e) => ConfigureScheduleQuery();
             Find<Button>("ExportSchedulesButton").Click += (s, e) => ExportSchedules();
@@ -145,7 +150,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 var border = window.Content as Border;
                 if (border != null) border.Margin = window.WindowState == WindowState.Maximized ? new Thickness(7) : new Thickness(0);
             };
-            window.Loaded += (s, e) => { target.IsEnabled = false; ClearScopeResults(); };
+            window.Loaded += (s, e) => { target.IsEnabled = false; ClearScopeResults(); UpdateTabActions(); };
         }
 
         public void ShowDialog(IntPtr owner)
@@ -198,6 +203,7 @@ namespace MEP_Export_BOM_From_View_ver1
             { if (item.IsAvailable) selections[item.Id] = item.IsSelected; item.PropertyChanged -= CategoryChanged; }
             categoryOptions = new List<CategoryOption>(); scanNotes = new List<string>(); categoriesLoaded = false;
             scopeResult = null; scheduleTables.Clear();
+            ClearImportedSelection(false);
             SetCategoryView(); InvalidatePreview(); UpdateCategorySummary();
             previewButton.IsEnabled = scope.SelectedIndex >= 0 && (scope.SelectedIndex == 0 || TargetId != ElementId.InvalidElementId);
             Status("Choose a scope and view, then click Preview BOM to load categories.");
@@ -283,11 +289,12 @@ namespace MEP_Export_BOM_From_View_ver1
             Find<TextBlock>("SchedulePreviewStatus").Text = "Preview BOM first, then select a category. Native schedules include the entire host model.";
             Find<Button>("CreateScheduleButton").IsEnabled = false;
             Find<Button>("ModifyTitleButton").IsEnabled = false;
-            foreach (string name in new[] { "BomQueryButton", "ScheduleTitleButton", "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(name).IsEnabled = false;
+            foreach (string name in new[] { "BomQueryButton", "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(name).IsEnabled = false;
             notesButton.IsEnabled = scanNotes.Count > 0;
             Find<TextBlock>("ElementMetric").Text = "—"; Find<TextBlock>("RowMetric").Text = "—";
             Find<StackPanel>("EmptyPreview").Visibility = Visibility.Visible;
             Status("Selection changed. Click Preview BOM to refresh.");
+            UpdateTabActions();
         }
 
         private void Preview()
@@ -324,7 +331,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 if (element.Measures.TryGetValue(method, out value)) { element.Quantity = value; element.Unit = method == "Count" ? "pcs" : method == "Length" ? "m" : method == "Area" ? "m²" : method == "Volume" ? "m³" : element.AutoUnit ?? element.Unit; }
                 else { element.Quantity = 0; element.Unit = method == "Length" ? "m" : method == "Area" ? "m²" : "m³"; }
             }
-            result = new BomResult { Model = scopeResult.Model, Scope = scopeResult.Scope, Elements = scopeResult.Elements.Where(e => selected.Contains(e.CategoryId)).ToList(),
+            result = new BomResult { Model = scopeResult.Model, Scope = scopeResult.Scope, Elements = scopeResult.Elements.Where(e => selected.Contains(e.CategoryId) && (importedSelection == null || importedSelection.Contains(e.Identity))).ToList(),
                 CommonParameters = scopeResult.CommonParameters, Query = bomSettings.Clone(), Warnings = new List<string>(scopeResult.Warnings) };
             if (result.Elements.Count > 0 && scopeResult.ParameterFields.Count > 0) {
                 var common = new HashSet<string>(result.Elements[0].ExtraValues.Keys);
@@ -346,6 +353,7 @@ namespace MEP_Export_BOM_From_View_ver1
             foreach (var row in result.Rows.Where(r => r.ExtraValues.Values.Contains("<varies>"))) result.Warnings.Add("Mixed parameter values in BOM row " + row.No + ": review <varies> cells.");
             foreach (var element in result.Elements.Where(e => !e.Measures.ContainsKey(measurementRules.FirstOrDefault(r => r.CategoryId == e.CategoryId)?.Method ?? "Auto"))) result.Warnings.Add("Measurement unavailable: " + element.SourceName + " / " + element.ElementId + ". Quantity shown as zero; choose a supported measurement.");
             result.Warnings.AddRange(result.Rows.Where(r => r.HasWarnings).Select(r => r.Warnings)); result.Warnings = result.Warnings.Distinct().ToList();
+            if (importedSelection != null) result.Warnings.Add("Imported single-key selection: " + importDescription + ". Only matching instances within the scanned scope are included.");
             ApplyLayout();
             var combo = Find<ComboBox>("ScheduleCategoryCombo"); var previous = combo.SelectedItem as CategoryOption;
             updating = true;
@@ -353,7 +361,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 combo.SelectedItem = combo.Items.Cast<CategoryOption>().FirstOrDefault(c => previous != null && c.Id == previous.Id) ?? combo.Items.Cast<CategoryOption>().FirstOrDefault(); }
             finally { updating = false; }
             bool schedules = combo.Items.Count > 0;
-            foreach (string name in new[] { "CreateScheduleButton", "ScheduleTitleButton", "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(name).IsEnabled = schedules;
+            foreach (string name in new[] { "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(name).IsEnabled = schedules;
             Find<Button>("ModifyTitleButton").IsEnabled = selected.Count > 0; Find<Button>("BomQueryButton").IsEnabled = selected.Count > 0;
             exportButton.IsEnabled = ids.Count > 0; notesButton.IsEnabled = true;
             Find<Button>("HighlightButton").IsEnabled = ids.Count > 0 && Find<TabControl>("PreviewTabs").SelectedIndex == 0;
@@ -364,18 +372,24 @@ namespace MEP_Export_BOM_From_View_ver1
             scheduleTables.Clear();
             Status("Preview updated · " + ids.Count + " elements · " + result.Scope);
             PreviewSchedule();
+            UpdateTabActions();
         }
 
         private void RequestSchedule()
         {
+            if (Find<TabControl>("PreviewTabs").SelectedIndex != 1) return;
             var selected = categoryOptions.Where(c => c.IsSelected && c.IsAvailable && ViewSchedule.IsValidCategoryForSchedule(new ElementId(c.Id))).ToList();
             if (result == null || selected.Count == 0) return;
             var existing = new FilteredElementCollector(document).OfClass(typeof(RevitView)).Cast<RevitView>().Select(v => v.Name).ToList();
             var used = new HashSet<string>(existing, StringComparer.OrdinalIgnoreCase);
             var requests = selected.Select(c => new ScheduleRequest { CategoryId = c.Id, CategoryName = c.Name,
-                Supported = true, Options = GetScheduleOptions(c), ScheduleName = GetScheduleOptions(c).Title }).ToList();
+                Supported = true, Options = GetScheduleOptions(c).Clone(), ScheduleName = GetScheduleOptions(c).Title }).ToList();
+            // Validate the same frozen fields, headings, filters, sorting and scope IDs that creation will receive.
+            foreach (var request in requests)
+                RevitScheduleService.Preview(document, request.CategoryId, request.CategoryName, request.Options);
             var dialog = ConfigurationDialogs.BuildNamesWindow(window, requests, existing);
             if (dialog.ShowDialog() != true) return;
+            foreach (var request in requests) request.Options.Title = request.ScheduleName;
             ScheduleRequests = requests.Where(r => r.Supported).ToList();
             // Revit view activation is performed after the modal window closes.
             window.Close();
@@ -388,7 +402,7 @@ namespace MEP_Export_BOM_From_View_ver1
             var scheduleGrid = Find<DataGrid>("ScheduleGrid");
             scheduleGrid.ItemsSource = null; scheduleGrid.Columns.Clear();
             if (result == null || category == null)
-            { Find<TextBlock>("SchedulePreviewStatus").Text = "Preview BOM with a category that supports Revit schedules."; return; }
+            { Find<TextBlock>("SchedulePreviewStatus").Text = "Preview BOM with a category that supports Revit schedules."; UpdateTabActions(); return; }
             try
             {
                 Mouse.OverrideCursor = Cursors.Wait;
@@ -408,8 +422,8 @@ namespace MEP_Export_BOM_From_View_ver1
                 scheduleGrid.ItemsSource = display.DefaultView;
                 Find<TextBlock>("SchedulePreviewStatus").Text = options.Title + " · " + (options.ScopeElementIds == null ? "Entire host model" : "BOM scope: " + options.ScopeElementIds.Count + " host elements (links excluded)") + " · " + options.Settings.Filters.Count + " filters · " + options.Settings.Sorts.Count + " sort/group rules";
             }
-            catch (Exception ex) { Find<TextBlock>("SchedulePreviewStatus").Text = "Cannot preview schedule: " + ex.Message; }
-            finally { Mouse.OverrideCursor = null; }
+            catch (Exception ex) { scheduleTables.Remove(category.Id); Find<TextBlock>("SchedulePreviewStatus").Text = "Cannot preview schedule: " + ex.Message; }
+            finally { Mouse.OverrideCursor = null; UpdateTabActions(); }
         }
 
         private void ModifyTitle()
@@ -505,6 +519,11 @@ namespace MEP_Export_BOM_From_View_ver1
             grid.Columns.Clear();
             foreach (var column in result.Layout.Columns.Where(c => c.IsVisible))
             {
+                if (column.Key == "ElementIds")
+                {
+                    var idsColumn = ConfigurationDialogs.ElementIdColumn(window); idsColumn.Header = column.Header;
+                    grid.Columns.Add(idsColumn); continue;
+                }
                 var path = column.Key == "No" ? "DisplayNo" : column.Key == "Quantity" ? "DisplayQuantity" : column.Key == "ElementCount" ? "DisplayElementCount" : column.Key;
                 var binding = new Binding(column.Key.StartsWith("param:", StringComparison.Ordinal) ? "ExtraValues[" + column.Key + "]" : path);
                 if (column.Key == "Quantity") binding.StringFormat = "N3";

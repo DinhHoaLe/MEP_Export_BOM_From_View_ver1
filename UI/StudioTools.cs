@@ -107,7 +107,8 @@ namespace MEP_Export_BOM_From_View_ver1
             return new BomSnapshot { ModelKey = BomService.ModelKey(document), Scope = result.Scope, ExportedUtc = DateTime.UtcNow.ToString("o"), Elements = result.Elements,
                 SelectionKey = string.Join(",", categoryOptions.Where(c => c.IsSelected).Select(c => c.Id).OrderBy(id => id)) + ";links=" + Find<CheckBox>("IncludeLinksCheck").IsChecked + ";" +
                     string.Join(";", measurementRules.Where(r => r.Method != "Auto").OrderBy(r => r.CategoryId).Select(r => r.CategoryId + ":" + r.Method)) + ";" +
-                    string.Join(";", bomSettings.Filters.Select(f => f.Field + ":" + f.Operator + ":" + f.Value)) + ";itemized=" + bomSettings.Itemized };
+                    string.Join(";", bomSettings.Filters.Select(f => f.Field + ":" + f.Operator + ":" + f.Value)) + ";itemized=" + bomSettings.Itemized +
+                    ";import=" + (importedSelection == null ? "none" : ImportSelection.Fingerprint(importedSelection)) };
         }
         private void SaveSnapshot()
         {

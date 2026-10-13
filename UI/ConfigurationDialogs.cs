@@ -163,7 +163,7 @@ namespace MEP_Export_BOM_From_View_ver1
             var dialog = Base(owner, "Modify Title / Fields", 1020, 680);
             var working = original.Clone();
             var columns = new ObservableCollection<BomColumn>(working.Columns);
-            var layout = Rows(dialog, "Modify title and scheduled fields", "Category, Family, Type, Unit, Quantity and Element Count are required. Rename or reorder them; required fields cannot be removed or hidden.");
+            var layout = Rows(dialog, "Modify title and scheduled fields", "Required fields cannot be removed. Category, Family, Type and Element Count stay visible; Unit and Quantity may be hidden. Enable other columns here when needed.");
             var body = new System.Windows.Controls.Grid { Margin = new Thickness(0, 10, 0, 0) };
             body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition());
             var titleRow = new DockPanel { Margin = new Thickness(0, 0, 0, 16) };

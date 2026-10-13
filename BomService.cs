@@ -163,9 +163,49 @@ namespace MEP_Export_BOM_From_View_ver1
             return filtered;
         }
 
+        public static IList<ElementProperty> GetProperties(Document host, ElementRecord record)
+        {
+            var document = RecordDocument(host, record);
+            var element = document?.GetElement(new ElementId(record.ElementId));
+            if (element == null) throw new InvalidOperationException("Element is unavailable; refresh the BOM or reload the linked model.");
+            var properties = new List<ElementProperty>();
+            Action<string, string, string> add = (group, name, value) => properties.Add(new ElementProperty { Group = group, Name = name, Value = value ?? "", Access = "Read-only" });
+            add("Identity", "Source", record.SourceName); add("Identity", "Element ID", element.Id.IntegerValue.ToString());
+            add("Identity", "Unique ID", element.UniqueId); add("Identity", "Category", element.Category?.Name);
+            add("Identity", "Family", record.Family); add("Identity", "Type", record.Type);
+            add("BOM", "System", record.System); add("BOM", "Size", record.Size);
+            add("BOM", "Quantity", record.Quantity.ToString("0.######", CultureInfo.InvariantCulture)); add("BOM", "Unit", record.Unit);
+            if (record.LinkInstanceId != 0) add("Identity", "Link Instance ID", record.LinkInstanceId.ToString());
+            foreach (var source in new[] { element, document.GetElement(element.GetTypeId()) })
+            {
+                if (source == null) continue;
+                string group = source.Id == element.Id ? "Instance" : "Type";
+                var rows = new List<ElementProperty>();
+                foreach (Parameter parameter in source.Parameters)
+                {
+                    if (parameter.Definition == null || parameter.StorageType == StorageType.None) continue;
+                    string value;
+                    try
+                    {
+                        value = parameter.HasValue ? Text(parameter) : "";
+                        if (parameter.HasValue && parameter.StorageType == StorageType.ElementId) value = document.GetElement(parameter.AsElementId())?.Name ?? value;
+                        if (parameter.HasValue && string.IsNullOrEmpty(value))
+                            value = parameter.StorageType == StorageType.Integer ? parameter.AsInteger().ToString(CultureInfo.InvariantCulture) :
+                                parameter.StorageType == StorageType.Double ? parameter.AsDouble().ToString("G", CultureInfo.InvariantCulture) : value;
+                    }
+                    catch (Autodesk.Revit.Exceptions.InvalidOperationException) { value = "<unavailable>"; }
+                    rows.Add(new ElementProperty { Group = group, Name = parameter.Definition.Name, Value = value,
+                        Access = parameter.IsReadOnly ? "Read-only" : "Edit in Revit" });
+                }
+                properties.AddRange(rows.OrderBy(p => p.Name));
+            }
+            return properties;
+        }
+
         public static void LoadCommonParameters(Document doc, BomResult result)
         {
             var names = new Dictionary<string, string>();
+            var numeric = new HashSet<string>();
             var typeCache = new Dictionary<string, Dictionary<string, string>>();
             HashSet<string> common = null;
             foreach (var record in result.Elements)
@@ -180,11 +220,11 @@ namespace MEP_Export_BOM_From_View_ver1
                     if (!typeCache.TryGetValue(typeId, out typeValues))
                     {
                         typeValues = new Dictionary<string, string>();
-                        ReadParameters(sourceDocument.GetElement(element.GetTypeId()), typeValues, names);
+                        ReadParameters(sourceDocument.GetElement(element.GetTypeId()), typeValues, names, numeric);
                         typeCache[typeId] = typeValues;
                     }
                     foreach (var pair in typeValues) values[pair.Key] = pair.Value;
-                    ReadParameters(element, values, names);
+                    ReadParameters(element, values, names, numeric);
                     var associations = new Dictionary<string, int>();
                     ReadAssociations(sourceDocument.GetElement(element.GetTypeId()), associations);
                     ReadAssociations(element, associations);
@@ -194,13 +234,13 @@ namespace MEP_Export_BOM_From_View_ver1
                 if (common == null) common = new HashSet<string>(values.Keys);
                 else common.IntersectWith(values.Keys);
             }
-            result.CommonParameters = (common ?? new HashSet<string>()).Select(key => new ParameterField { Key = key, Name = names[key] })
+            result.CommonParameters = (common ?? new HashSet<string>()).Select(key => new ParameterField { Key = key, Name = names[key], IsNumeric = numeric.Contains(key) })
                 .OrderBy(f => f.Name).ThenBy(f => f.Key).ToList();
-            result.ParameterFields = names.Select(pair => new ParameterField { Key = pair.Key, Name = pair.Value }).OrderBy(f => f.Name).ThenBy(f => f.Key).ToList();
+            result.ParameterFields = names.Select(pair => new ParameterField { Key = pair.Key, Name = pair.Value, IsNumeric = numeric.Contains(pair.Key) }).OrderBy(f => f.Name).ThenBy(f => f.Key).ToList();
             result.Rows = BomAggregator.Aggregate(result.Elements);
         }
 
-        private static void ReadParameters(Element element, Dictionary<string, string> values, Dictionary<string, string> names)
+        private static void ReadParameters(Element element, Dictionary<string, string> values, Dictionary<string, string> names, HashSet<string> numeric)
         {
             if (element == null) return;
             foreach (Parameter parameter in element.Parameters)
@@ -217,6 +257,7 @@ namespace MEP_Export_BOM_From_View_ver1
                         value = parameter.AsInteger().ToString(CultureInfo.InvariantCulture);
                     values[key] = value;
                     names[key] = parameter.Definition.Name;
+                    if (parameter.StorageType == StorageType.Double || parameter.StorageType == StorageType.Integer) numeric.Add(key);
                 }
                 catch (Autodesk.Revit.Exceptions.InvalidOperationException) { /* Parameter unavailable on this element. */ }
             }

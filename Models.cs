@@ -5,6 +5,14 @@ namespace MEP_Export_BOM_From_View_ver1
 {
     public enum ExportScope { EntireModel, View3D, FloorPlan, ScopeBox }
 
+    public sealed class ElementProperty
+    {
+        public string Group { get; set; }
+        public string Name { get; set; }
+        public string Value { get; set; }
+        public string Access { get; set; }
+    }
+
     public sealed class CategoryOption : INotifyPropertyChanged
     {
         private bool selected;

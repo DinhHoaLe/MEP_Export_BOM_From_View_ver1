@@ -9,6 +9,7 @@ namespace MEP_Export_BOM_From_View_ver1
     {
         public string Key { get; set; }
         public string Name { get; set; }
+        public bool IsNumeric { get; set; }
         public override string ToString() { return Name; }
     }
 
@@ -19,9 +20,9 @@ namespace MEP_Export_BOM_From_View_ver1
         public string Key { get; set; }
         public string Header { get { return header; } set { header = value; Changed(nameof(Header)); } }
         public bool IsRequired { get { return BomLayout.RequiredKeys.Contains(Key); } }
-        public bool CanHide { get { return !IsRequired; } }
-        public bool IsVisible { get { return visible || IsRequired; } set { visible = value || IsRequired; Changed(nameof(IsVisible)); } }
-        public string Requirement { get { return IsRequired ? "Required" : "Optional"; } }
+        public bool CanHide { get { return !BomLayout.AlwaysVisibleKeys.Contains(Key); } }
+        public bool IsVisible { get { return visible || !CanHide; } set { visible = value || !CanHide; Changed(nameof(IsVisible)); } }
+        public string Requirement { get { return IsRequired ? CanHide ? "Required / hideable" : "Required" : "Optional"; } }
         public BomColumn Clone() { return new BomColumn { Key = Key, Header = Header, IsVisible = IsVisible }; }
         public event PropertyChangedEventHandler PropertyChanged;
         private void Changed(string name) { PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)); }
@@ -30,6 +31,13 @@ namespace MEP_Export_BOM_From_View_ver1
     public sealed class BomLayout
     {
         public static readonly HashSet<string> RequiredKeys = new HashSet<string> { "Category", "Family", "Type", "Unit", "Quantity", "ElementCount" };
+        public static readonly HashSet<string> AlwaysVisibleKeys = new HashSet<string> { "Category", "Family", "Type", "ElementCount" };
+        public static List<BomColumn> CompactColumns()
+        {
+            var hidden = new HashSet<string> { "System", "Size", "Unit", "Quantity" };
+            var columns = Defaults(); foreach (var column in columns) column.IsVisible = !hidden.Contains(column.Key);
+            return columns;
+        }
         public string Title { get; set; } = "MEP BILL OF MATERIALS";
         public List<BomColumn> Columns { get; set; } = Defaults();
         public BomLayout Clone() { return new BomLayout { Title = Title, Columns = Columns.Select(c => c.Clone()).ToList() }; }
@@ -42,7 +50,7 @@ namespace MEP_Export_BOM_From_View_ver1
         public void Validate()
         {
             if (string.IsNullOrWhiteSpace(Title)) throw new InvalidOperationException("BOM title cannot be blank.");
-            if (Columns == null || RequiredKeys.Any(key => !Columns.Any(c => c.Key == key && c.IsVisible)))
+            if (Columns == null || RequiredKeys.Any(key => !Columns.Any(c => c.Key == key)) || AlwaysVisibleKeys.Any(key => !Columns.Any(c => c.Key == key && c.IsVisible)))
                 throw new InvalidOperationException("Required columns cannot be removed or hidden.");
             if (Columns.Any(c => string.IsNullOrWhiteSpace(c.Header)) || Columns.Select(c => c.Key).Distinct().Count() != Columns.Count)
                 throw new InvalidOperationException("Column headings must be nonblank and fields must not be duplicated.");

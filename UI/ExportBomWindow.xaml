@@ -184,7 +184,7 @@
                 </StackPanel>
             </Grid>
             <Grid Grid.Row="1" Margin="28,8,28,22">
-                <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="*"/><RowDefinition Height="16"/><RowDefinition Height="132"/><RowDefinition Height="56"/></Grid.RowDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="*"/><RowDefinition Height="56"/></Grid.RowDefinitions>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="VIEW → BILL OF MATERIALS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentDark}"/>
@@ -234,12 +234,12 @@
                     <Border Grid.Column="2" Style="{StaticResource Card}" Padding="18">
                         <Grid><Grid.RowDefinitions><RowDefinition Height="76"/><RowDefinition Height="*"/><RowDefinition Height="28"/></Grid.RowDefinitions>
                             <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="100"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-                                <StackPanel VerticalAlignment="Center"><TextBlock Text="03  /  BOM PREVIEW" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/><TextBlock x:Name="PreviewTitleText" Text="Review before you export" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
+                                <StackPanel VerticalAlignment="Center"><TextBlock Text="03  /  PREVIEW &amp; EXCEL" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/><TextBlock x:Name="PreviewTitleText" Text="Review before you export" FontSize="18" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/></StackPanel>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock x:Name="ElementMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="ELEMENTS" Style="{StaticResource Field}"/></StackPanel>
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock x:Name="RowMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="BOM ROWS" Style="{StaticResource Field}"/></StackPanel>
                             </Grid>
                             <TabControl x:Name="PreviewTabs" Grid.Row="1">
-                            <TabItem><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="BOM Preview" VerticalAlignment="Center" Margin="0,0,8,0"/><Button x:Name="ModifyTitleButton" Content="Modify Title" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11"/></StackPanel></TabItem.Header>
+                            <TabItem Header="BOM Preview">
                             <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                                 <StackPanel Orientation="Horizontal" Margin="4,8"><Button x:Name="BomQueryButton" Content="Filter / Sorting &amp; Grouping" Style="{StaticResource ChipButton}" IsEnabled="False"/><TextBlock x:Name="BomQuerySummary" Text="No filters · BOM groups" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/></StackPanel>
                             <Grid Grid.Row="1">
@@ -263,39 +263,52 @@
                                     <TextBlock Text="Choose your scope and view, then click Preview BOM." Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Grid></Grid></TabItem>
-                            <TabItem><TabItem.Header><WrapPanel><TextBlock Text="Revit Schedule Preview" VerticalAlignment="Center" Margin="0,0,8,0"/><Button x:Name="ScheduleTitleButton" Content="Modify Title" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11"/><Button x:Name="CreateScheduleButton" Content="Create Revit Schedules" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11" Margin="6,0,0,0"/></WrapPanel></TabItem.Header>
+                            <TabItem Header="Revit Schedule Preview">
                                 <Grid Background="White"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                                     <WrapPanel Margin="8"><TextBlock Text="Category" VerticalAlignment="Center" Margin="0,0,12,0"/><ComboBox x:Name="ScheduleCategoryCombo" DisplayMemberPath="Name" MinWidth="160"/><Button x:Name="ScheduleQueryButton" Content="Filter / Sorting &amp; Grouping" Style="{StaticResource ChipButton}" Margin="8,0,0,0" IsEnabled="False"/><CheckBox x:Name="MatchScopeCheck" Content="Match BOM scope (host)" IsChecked="True" Style="{StaticResource CategoryCheck}" Padding="5,2" ToolTip="Preview rolls back the scope marker. Create persists a read-only membership parameter on scoped host elements; its schedule column is hidden."/></WrapPanel>
                                     <TextBlock Grid.Row="1" x:Name="SchedulePreviewStatus" Text="Preview BOM first, then select a category. Native schedules include the entire host model." TextWrapping="Wrap" Margin="8"/>
                                     <DataGrid Grid.Row="2" x:Name="ScheduleGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="None" Background="White" BorderThickness="0" RowHeight="42">
                                     </DataGrid>
                                 </Grid>
+                            </TabItem>
+                            <TabItem Header="Excel / CSV">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel Margin="16">
+                                        <TextBlock Text="04 / EXCEL OUTPUT" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
+                                        <CheckBox x:Name="CategorySheetsCheck" Content="Separate sheet per category" IsChecked="True" Style="{StaticResource CategoryCheck}" Padding="4,6" Margin="0,0,0,12"/>
+                                        <TextBlock Text="TEMPLATE .XLSX / LEAVE EMPTY FOR DEFAULT FORM" Style="{StaticResource Field}"/>
+                                        <Grid Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="82"/><ColumnDefinition Width="64"/></Grid.ColumnDefinitions>
+                                            <TextBox x:Name="TemplatePath" IsReadOnly="True"/>
+                                            <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Style="{StaticResource ChipButton}" Margin="8,0,0,0"/>
+                                            <Button x:Name="ClearTemplateButton" Grid.Column="2" Content="Clear" Style="{StaticResource ChipButton}" Margin="8,0,0,0"/>
+                                        </Grid>
+                                        <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                                            <StackPanel><TextBlock Text="SHEET / BLANK = FIRST" Style="{StaticResource Field}"/><TextBox x:Name="SheetName"/></StackPanel>
+                                            <StackPanel Grid.Column="1" Margin="16,0,0,0"><TextBlock Text="DATA ROW" Style="{StaticResource Field}"/><TextBox x:Name="FirstDataRow" Text="6"/></StackPanel>
+                                        </Grid>
+                                        <Button x:Name="TemplateMappingButton" Content="Template column mapping…" Style="{StaticResource SecondaryButton}" HorizontalAlignment="Left" Margin="0,0,0,22"/>
+                                        <Border BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,18,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="IMPORT ELEMENT SELECTION" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
+                                                <TextBlock Text="Choose one key column and its matching BOM title or Revit parameter. Elements matching any nonblank key value are selected within the current scope. No parameter values are changed." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,0,0,12"/>
+                                                <WrapPanel><Button x:Name="ImportSelectionButton" Content="Import Excel / CSV…" Style="{StaticResource SecondaryButton}" IsEnabled="False"/><Button x:Name="ClearImportButton" Content="Clear import filter" Style="{StaticResource ChipButton}" IsEnabled="False" Margin="8,0,0,0"/></WrapPanel>
+                                                <TextBlock x:Name="ImportStatusText" Text="Preview BOM first. No import filter applied." TextWrapping="Wrap" Margin="0,12,0,0" Foreground="{StaticResource AccentDark}"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </ScrollViewer>
                             </TabItem></TabControl>
-                            <TextBlock Grid.Row="2" Text="MEP curves in meters  ·  Other elements in pieces  ·  Full element quantities" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom"/>
+                            <TextBlock Grid.Row="2" Text="Double-click a BOM data row to inspect element properties · Hidden columns can be enabled in Modify Title" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom" TextTrimming="CharacterEllipsis"/>
                         </Grid>
                     </Border>
                 </Grid>
-                <Border Grid.Row="3" Style="{StaticResource Card}">
-                    <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="04  /  EXCEL OUTPUT" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
-                            <CheckBox x:Name="CategorySheetsCheck" Grid.Column="1" Content="Separate sheet per category" IsChecked="True" Style="{StaticResource CategoryCheck}" Padding="4,0" FontSize="11"/>
-                        </Grid>
-                        <Grid Grid.Row="1" Margin="0,6,0,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="82"/><ColumnDefinition Width="64"/><ColumnDefinition Width="160"/><ColumnDefinition Width="105"/></Grid.ColumnDefinitions>
-                            <StackPanel><TextBlock Text="TEMPLATE .XLSX  /  LEAVE EMPTY FOR DEFAULT FORM" Style="{StaticResource Field}"/><TextBox x:Name="TemplatePath" IsReadOnly="True"/></StackPanel>
-                            <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Style="{StaticResource ChipButton}" Margin="8,20,0,0" VerticalAlignment="Top" Height="36"/>
-                            <Button x:Name="ClearTemplateButton" Grid.Column="2" Content="Clear" Style="{StaticResource ChipButton}" Margin="8,20,0,0" VerticalAlignment="Top" Height="36"/>
-                            <StackPanel Grid.Column="3" Margin="14,0,0,0"><TextBlock Text="SHEET  /  BLANK = FIRST" Style="{StaticResource Field}"/><TextBox x:Name="SheetName"/></StackPanel>
-                            <StackPanel Grid.Column="4" Margin="14,0,0,0"><TextBlock Text="DATA ROW" Style="{StaticResource Field}"/><TextBox x:Name="FirstDataRow" Text="6"/></StackPanel>
-                        </Grid>
-                    </Grid>
-                </Border>
-                <Grid Grid.Row="4" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Grid Grid.Row="2" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <TextBlock x:Name="StatusText" Foreground="{StaticResource AccentDark}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,18,0" Text="Choose your scope and categories."/>
                     <Button x:Name="NotesButton" Grid.Column="1" Content="Notes" Style="{StaticResource SecondaryButton}" IsEnabled="False" MinWidth="70"/>
-                    <Button x:Name="ExportSchedulesButton" Grid.Column="5" Content="Select / Export Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Select several category schedules to export as worksheets in one Excel workbook."/>
-                    <Button x:Name="ExportButton" Grid.Column="7" Content="Export Excel  ↗" Style="{StaticResource PrimaryButton}" IsEnabled="False" MinWidth="146"/>
+                    <Button x:Name="ModifyTitleButton" Grid.Column="3" Content="Modify Title" Style="{StaticResource SecondaryButton}" IsEnabled="False"/>
+                    <Button x:Name="CreateScheduleButton" Grid.Column="5" Content="Create Revit Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False"/>
+                    <Button x:Name="ExportSchedulesButton" Grid.Column="7" Content="Export Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Select several category schedules to export as worksheets in one Excel workbook."/>
+                    <Button x:Name="ExportButton" Grid.Column="9" Content="Export Excel ↗" Style="{StaticResource PrimaryButton}" IsEnabled="False" MinWidth="120"/>
                 </Grid>
             </Grid>
         </Grid>
