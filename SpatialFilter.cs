@@ -10,7 +10,7 @@ namespace MEP_Export_BOM_From_View_ver1
     {
         private const double Tolerance = 1e-7;
 
-        public static Func<Element, bool> ForScopeBox(Element scopeBox)
+        public static Func<Element, bool> ForScopeBox(Element scopeBox, Transform placement = null)
         {
             var points = new List<XYZ>();
             var lines = new List<Line>();
@@ -28,10 +28,10 @@ namespace MEP_Export_BOM_From_View_ver1
             var local = points.Select(frame.Inverse.OfPoint).ToList();
             var min = new XYZ(local.Min(p => p.X), local.Min(p => p.Y), local.Min(p => p.Z));
             var max = new XYZ(local.Max(p => p.X), local.Max(p => p.Y), local.Max(p => p.Z));
-            return element => IntersectsBox(element, frame, min, max);
+            return element => IntersectsBox(element, frame, min, max, placement);
         }
 
-        public static Func<Element, bool> ForView(View view)
+        public static Func<Element, bool> ForView(View view, Transform placement = null)
         {
             var view3d = view as View3D;
             if (view3d != null)
@@ -42,7 +42,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 var section = view3d.GetSectionBox();
                 var transform = section.Transform; var min = section.Min; var max = section.Max;
                 // SAT in 3D handles tilted section boxes as well as rotated boxes.
-                return element => IntersectsBox(element, transform, min, max);
+                return element => IntersectsBox(element, transform, min, max, placement);
             }
             if (!view.CropBoxActive) return element => true;
             var frame = view.CropBox.Transform.Inverse;
@@ -65,7 +65,7 @@ namespace MEP_Export_BOM_From_View_ver1
             if (polygons.Count == 0) throw new InvalidOperationException("Cannot read this view's crop boundary.");
             return element =>
             {
-                var box = element.get_BoundingBox(null);
+                var box = PlacedBox(element, placement);
                 if (box == null) return false;
                 var points = Corners(box).Select(frame.OfPoint).ToList();
                 var rectangle = Rectangle(points.Min(p => p.X), points.Min(p => p.Y), points.Max(p => p.X), points.Max(p => p.Y));
@@ -88,9 +88,16 @@ namespace MEP_Export_BOM_From_View_ver1
             }
         }
 
-        private static bool IntersectsBox(Element element, Transform frame, XYZ min, XYZ max)
+        private static BoundingBoxXYZ PlacedBox(Element element, Transform placement)
         {
-            var elementBox = element.get_BoundingBox(null);
+            var box = element.get_BoundingBox(null);
+            if (box != null && placement != null) box.Transform = placement.Multiply(box.Transform);
+            return box;
+        }
+
+        private static bool IntersectsBox(Element element, Transform frame, XYZ min, XYZ max, Transform placement = null)
+        {
+            var elementBox = PlacedBox(element, placement);
             if (elementBox == null) return false;
             var a = Corners(elementBox);
             var b = Corners(new BoundingBoxXYZ { Min = min, Max = max, Transform = frame });

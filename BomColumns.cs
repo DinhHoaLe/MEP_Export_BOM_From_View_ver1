@@ -55,10 +55,12 @@ namespace MEP_Export_BOM_From_View_ver1
         {
             switch (key)
             {
-                case "No": return row.No; case "Category": return row.Category; case "Family": return row.Family;
+                case "No": return row.DisplayNo; case "Category": return row.Category; case "Family": return row.Family;
+                case "Source": return row.Source;
+                case "Warnings": return row.Warnings;
                 case "Type": return row.Type; case "System": return row.System; case "Size": return row.Size;
-                case "Unit": return row.Unit; case "Quantity": return row.Quantity;
-                case "ElementCount": return row.ElementCount; case "ElementIds": return row.ElementIds;
+                case "Unit": return row.Unit; case "Quantity": return row.DisplayQuantity;
+                case "ElementCount": return row.DisplayElementCount; case "ElementIds": return row.ElementIds;
                 default: string value; return row.ExtraValues.TryGetValue(key, out value) ? value : "";
             }
         }
@@ -70,6 +72,8 @@ namespace MEP_Export_BOM_From_View_ver1
         public string CategoryName { get; set; }
         public string ScheduleName { get; set; }
         public bool Supported { get; set; } = true;
+        public bool IsSelected { get; set; } = true;
+        public NativeScheduleOptions Options { get; set; }
         public string Status { get { return Supported ? "Ready" : "Category does not support a regular schedule"; } }
     }
 

@@ -25,7 +25,7 @@ internal static class UiPreview
             var errors = new StringWriter();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new TextWriterTraceListener(errors));
             PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Warning;
-            foreach (string state in new[] { "empty", "preview", "minimum" })
+            foreach (string state in new[] { "empty", "preview", "minimum", "schedule" })
             {
                 Window window;
                 using (var stream = assembly.GetManifestResourceStream("BomWindow.xaml"))
@@ -52,12 +52,12 @@ internal static class UiPreview
                     new CategoryOption { Id = 4, Name = "Ducts", Count = 56, IsSelected = true },
                     new CategoryOption { Id = 5, Name = "Duct Fittings", Count = 32, IsSelected = true },
                     new CategoryOption { Id = 6, Name = "Mechanical Equipment", Count = 12, IsSelected = true },
-                    new CategoryOption { Id = 7, Name = "Cable Trays", Count = 40 }
+                    new CategoryOption { Id = 7, Name = "Cable Trays", Count = 0 }
                 };
                 if (state != "empty")
                 {
                     Find<ListBox>(window, "CategoryList").ItemsSource = categories;
-                    Find<TextBlock>(window, "CategoryCountText").Text = "7 present / 6 selected";
+                    Find<TextBlock>(window, "CategoryCountText").Text = "6 present / 6 selected";
                     Find<TextBlock>(window, "EmptyCategories").Visibility = Visibility.Collapsed;
                 }
                 else
@@ -79,8 +79,26 @@ internal static class UiPreview
                     Find<DataGrid>(window, "BomGrid").ItemsSource = rows;
                     Find<Button>(window, "CreateScheduleButton").IsEnabled = true;
                     Find<Button>(window, "ModifyTitleButton").IsEnabled = true;
+                    foreach (string name in new[] { "BomQueryButton", "ScheduleTitleButton", "ScheduleQueryButton", "ExportSchedulesButton" }) Find<Button>(window, name).IsEnabled = true;
                 }
                 else Find<TextBlock>(window, "StatusText").Text = "Choose a scope and view, then click Preview BOM to load categories.";
+                var tabs = Find<TabControl>(window, "PreviewTabs");
+                if (tabs.Items.Count != 2) throw new Exception("Both preview tabs are required.");
+                if (state == "schedule")
+                {
+                    tabs.SelectedIndex = 1;
+                    Find<ComboBox>(window, "ScheduleCategoryCombo").ItemsSource = categories;
+                    Find<ComboBox>(window, "ScheduleCategoryCombo").SelectedIndex = 0;
+                    Find<TextBlock>(window, "SchedulePreviewStatus").Text = "BOM - Pipes · Entire host model · Native Revit fields, units and totals · Read-only preview";
+                    var scheduleGrid = Find<DataGrid>(window, "ScheduleGrid");
+                    var headings = new[] { "Family and Type", "System Name", "Size", "Length", "Count" };
+                    for (int col = 0; col < 5; col++) scheduleGrid.Columns.Add(new DataGridTextColumn { Header = headings[col], Binding = new Binding("[" + col + "]"), Width = col == 0 ? 240 : 130, MinWidth = 110 });
+                    scheduleGrid.ItemsSource = new[] {
+                        new[] { "Pipe Types: CHW - Steel", "CHWS", "50 mm", "48.235 m", "1" },
+                        new[] { "Pipe Types: CHW - Steel", "CHWS", "50 mm", "12.500 m", "1" },
+                        new[] { "Grand total: 2", "", "", "60.735 m", "2" }
+                    };
+                }
                 var content = (FrameworkElement)window.Content;
                 double width = state == "minimum" ? 1060 : 1220;
                 double height = state == "minimum" ? 820 : 860;
@@ -114,6 +132,18 @@ internal static class UiPreview
                     var titles = ConfigurationDialogs.BuildLayoutWindow(window, new BomLayout(), new List<ParameterField>
                     { new ParameterField { Key = "param:1", Name = "Comments" }, new ParameterField { Key = "param:2", Name = "Manufacturer" } }, accepted => { });
                     Capture(titles, folder, "modify-title", 1020, 680); titles.Close();
+                    var fields = BomLayout.Defaults().ConvertAll(c => new ParameterField { Key = c.Key, Name = c.Header });
+                    var query = ConfigurationDialogs.BuildQueryWindow(window, new PreviewSettings { Filters = new List<PreviewFilter> { new PreviewFilter { Field = "System", Operator = "Contains", Value = "CHW" } }, Sorts = new List<PreviewSort> { new PreviewSort { Field = "Type", Header = true, Footer = true } } }, fields, false, accepted => { });
+                    Capture(query, folder, "filters", 1080, 740); query.Close();
+                    var grouping = ConfigurationDialogs.BuildQueryWindow(window, new PreviewSettings { Sorts = new List<PreviewSort> { new PreviewSort { Field = "System", Header = true, Footer = true } } }, fields, true, accepted => { });
+                    var queryTabs = Descendant<TabControl>((DependencyObject)grouping.Content); if (queryTabs != null) queryTabs.SelectedIndex = 1;
+                    Capture(grouping, folder, "sorting-grouping", 1080, 740); grouping.Close();
+                    var native = new NativeScheduleOptions { Title = "BOM - Pipes", Fields = new List<NativeField> { new NativeField { Key = "type", Name = "Family and Type", Heading = "Family and Type" }, new NativeField { Key = "length", Name = "Length", Heading = "Length", Total = true, CanTotal = true } } };
+                    var nativeTitle = ConfigurationDialogs.BuildNativeLayoutWindow(window, native, accepted => { }); Capture(nativeTitle, folder, "schedule-title", 1040, 700); nativeTitle.Close();
+                    var selection = ConfigurationDialogs.BuildScheduleSelection(window, new List<ScheduleRequest> { new ScheduleRequest { CategoryName = "Pipes", ScheduleName = "BOM - Pipes" }, new ScheduleRequest { CategoryName = "Ducts", ScheduleName = "BOM - Ducts" } }); Capture(selection, folder, "schedule-select", 820, 580); selection.Close();
+                    var measurements = ConfigurationDialogs.BuildMeasurements(window, new List<MeasurementRule> { new MeasurementRule { Category = "Pipes", Method = "Length" }, new MeasurementRule { Category = "Walls", Method = "Area" } }, accepted => { }); Capture(measurements, folder, "measurements", 800, 600); measurements.Close();
+                    var mapping = ConfigurationDialogs.BuildMapping(window, BomLayout.Defaults(), new List<TemplateMapping>(), 20, (accepted, total) => { }); Capture(mapping, folder, "template-mapping", 820, 660); mapping.Close();
+                    var comparison = ConfigurationDialogs.BuildChanges(window, new List<BomChange> { new BomChange { Change = "Added", Source = "Host", Element = "123", Category = "Pipes", After = "CHW · 50 mm · 4 m", Unit = "m", Delta = 4 } }, () => { }); Capture(comparison, folder, "comparison", 1100, 680); comparison.Close();
                 }
                 window.Close();
             }

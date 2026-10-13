@@ -9,12 +9,129 @@ using System.Windows.Media;
 
 namespace MEP_Export_BOM_From_View_ver1
 {
-    internal static class ConfigurationDialogs
+    internal static partial class ConfigurationDialogs
     {
+        internal static Window BuildQueryWindow(Window owner, PreviewSettings original, IList<ParameterField> fields, bool native, Action<PreviewSettings> accepted, Func<string, IList<ParameterField>> values = null)
+        {
+            var working = original.Clone();
+            var dialog = Base(owner, native ? "Revit Schedule · Filter / Sorting & Grouping" : "BOM · Filter / Sorting & Grouping", 1080, 740);
+            var layout = Rows(dialog, "Filter / Sorting & Grouping", native ?
+                "All filters are combined with AND. Native Revit validates field/operator compatibility. Numeric values use project units; ElementId/global parameter filters require an ID." :
+                "Filters apply to BOM rows, combined with AND. Quantity uses meters/pieces. Global parameter association uses a parameter field and ID, before aggregation. Totals remain separate by unit.");
+            var tabs = new TabControl(); layout.Children.Add(tabs); System.Windows.Controls.Grid.SetRow(tabs, 2);
+            var filterRows = new ObservableCollection<PreviewFilter>(working.Filters);
+            var filters = Grid(false); filters.ItemsSource = filterRows;
+            filters.Columns.Add(FieldColumn(fields));
+            filters.Columns.Add(new DataGridComboBoxColumn { Header = "Condition", ItemsSource = PreviewSettings.Operators, SelectedItemBinding = new Binding("Operator") { Mode = BindingMode.TwoWay }, Width = 230 });
+            filters.Columns.Add(new DataGridTextColumn { Header = "Value", Binding = new Binding("Value") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 430 });
+            var filterPanel = RulePanel(dialog, filters, () => { if (filterRows.Count < 8) filterRows.Add(new PreviewFilter { Field = fields.FirstOrDefault()?.Key }); }, () => { var row = filters.SelectedItem as PreviewFilter; if (row != null) filterRows.Remove(row); });
+            if (values != null) {
+                var valueActions = filterPanel.Children.OfType<StackPanel>().First();
+                var choices = new ComboBox { Width = 280, DisplayMemberPath = "Name", SelectedValuePath = "Key", Margin = new Thickness(10, 0, 0, 0), ToolTip = "Choose a value for the selected filter rule" };
+                var choose = Button(dialog, "Load values", false); valueActions.Children.Add(choose); valueActions.Children.Add(choices);
+                filters.SelectionChanged += (s, e) => { if (e.Source == filters) choices.ItemsSource = null; };
+                choose.Click += (s, e) => { try { filters.CommitEdit(DataGridEditingUnit.Cell, true); filters.CommitEdit(DataGridEditingUnit.Row, true); var row = filters.SelectedItem as PreviewFilter; if (row != null) choices.ItemsSource = values(row.Field); } catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Filter values"); } };
+                choices.SelectionChanged += (s, e) => { var row = filters.SelectedItem as PreviewFilter; var choice = choices.SelectedItem as ParameterField; if (row != null && choice != null) { row.Value = choice.Key; filters.Items.Refresh(); } };
+            }
+            tabs.Items.Add(new TabItem { Header = "Filters", Content = filterPanel });
+            var sortRows = new ObservableCollection<PreviewSort>(working.Sorts);
+            var sorts = Grid(false); sorts.ItemsSource = sortRows; sorts.Columns.Add(FieldColumn(fields));
+            foreach (var pair in new[] { new[] { "Descending", "Descending" }, new[] { "Header", "Header" }, new[] { "Footer", "Footer" }, new[] { "Footer title", "FooterTitle" }, new[] { "Footer count", "FooterCount" }, new[] { "Blank line", "BlankLine" } })
+                sorts.Columns.Add(new DataGridCheckBoxColumn { Header = pair[0], Binding = new Binding(pair[1]) { Mode = BindingMode.TwoWay }, Width = 95 });
+            var sorting = RulePanel(dialog, sorts, () => { if (sortRows.Count < 4) sortRows.Add(new PreviewSort { Field = fields.FirstOrDefault(f => sortRows.All(r => r.Field != f.Key))?.Key }); }, () => { var row = sorts.SelectedItem as PreviewSort; if (row != null) sortRows.Remove(row); });
+            var moveActions = sorting.Children.OfType<StackPanel>().First();
+            foreach (int direction in new[] { -1, 1 }) { int step = direction; var move = Button(dialog, step < 0 ? "Move up" : "Move down", false); moveActions.Children.Add(move); move.Click += (s, e) => { var row = sorts.SelectedItem as PreviewSort; if (row == null) return; int index = sortRows.IndexOf(row); if (index + step >= 0 && index + step < sortRows.Count) sortRows.Move(index, index + step); }; }
+            var options = new WrapPanel { Margin = new Thickness(8) };
+            var itemized = new CheckBox { Content = native ? "Itemize every instance" : "Itemize every instance (otherwise BOM groups)", IsChecked = working.Itemized, Margin = new Thickness(8) };
+            var total = new CheckBox { Content = "Grand totals", IsChecked = working.GrandTotal, Margin = new Thickness(8) };
+            var totalTitle = new CheckBox { Content = "Show total title", IsChecked = working.GrandTotalTitle, Margin = new Thickness(8) };
+            var totalCount = new CheckBox { Content = "Show total count", IsChecked = working.GrandTotalCount, Margin = new Thickness(8) };
+            var title = new TextBox { Text = working.TotalTitle, MinWidth = 160, Margin = new Thickness(8), ToolTip = "Grand total title" };
+            foreach (var control in new UIElement[] { itemized, total, totalTitle, totalCount, title }) options.Children.Add(control);
+            DockPanel.SetDock(options, Dock.Bottom); sorting.Children.Insert(0, options);
+            tabs.Items.Add(new TabItem { Header = "Sorting / Grouping", Content = sorting });
+            var actions = Actions(layout);
+            var cancel = Button(dialog, "Cancel", false); cancel.Click += (s, e) => dialog.Close(); actions.Children.Add(cancel);
+            var reset = Button(dialog, "Clear rules", false); reset.Click += (s, e) => { filterRows.Clear(); sortRows.Clear(); }; actions.Children.Add(reset);
+            var apply = Button(dialog, "Apply", true); actions.Children.Add(apply);
+            apply.Click += (s, e) => {
+                try {
+                    filters.CommitEdit(DataGridEditingUnit.Cell, true); filters.CommitEdit(DataGridEditingUnit.Row, true);
+                    sorts.CommitEdit(DataGridEditingUnit.Cell, true); sorts.CommitEdit(DataGridEditingUnit.Row, true);
+                    working.Filters = filterRows.ToList(); working.Sorts = sortRows.ToList(); working.Itemized = itemized.IsChecked == true;
+                    working.GrandTotal = total.IsChecked == true; working.GrandTotalTitle = totalTitle.IsChecked == true; working.GrandTotalCount = totalCount.IsChecked == true; working.TotalTitle = title.Text;
+                    working.Validate(fields.Select(f => f.Key), native); accepted(working); dialog.DialogResult = true;
+                } catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Filter / Sorting & Grouping"); }
+            };
+            return dialog;
+        }
+        private static DataGridComboBoxColumn FieldColumn(IList<ParameterField> fields)
+        { return new DataGridComboBoxColumn { Header = "Field", ItemsSource = fields, DisplayMemberPath = "Name", SelectedValuePath = "Key", SelectedValueBinding = new Binding("Field") { Mode = BindingMode.TwoWay }, Width = 270 }; }
+        private static DockPanel RulePanel(Window dialog, DataGrid grid, Action add, Action remove)
+        {
+            var panel = new DockPanel(); var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 8) };
+            var plus = Button(dialog, "Add rule", false); plus.Click += (s, e) => add();
+            var minus = Button(dialog, "Remove rule", false); minus.Click += (s, e) => remove();
+            actions.Children.Add(plus); actions.Children.Add(minus); DockPanel.SetDock(actions, Dock.Bottom); panel.Children.Add(actions); panel.Children.Add(grid); return panel;
+        }
+
+        internal static Window BuildNativeLayoutWindow(Window owner, NativeScheduleOptions original, Action<NativeScheduleOptions> accepted)
+        {
+            var working = original.Clone(); var columns = new ObservableCollection<NativeField>(working.Fields);
+            var dialog = Base(owner, "Revit Schedule · Modify Title / Fields", 1040, 700);
+            var layout = Rows(dialog, "Revit schedule title and fields", "Settings apply to this category only: preview, Excel export and created Revit schedule. Hidden fields can still be used for filtering and grouping.");
+            var body = new DockPanel(); layout.Children.Add(body); System.Windows.Controls.Grid.SetRow(body, 2);
+            var title = new TextBox { Text = working.Title, Margin = new Thickness(0, 0, 0, 12) }; DockPanel.SetDock(title, Dock.Top); body.Children.Add(title);
+            var actions = new WrapPanel { Margin = new Thickness(0, 8, 0, 8) }; DockPanel.SetDock(actions, Dock.Bottom); body.Children.Add(actions);
+            var available = new ComboBox { DisplayMemberPath = "Name", Width = 250, Margin = new Thickness(0, 0, 8, 0) }; actions.Children.Add(available);
+            Action refresh = () => available.ItemsSource = working.Available.Where(f => columns.All(c => c.Key != f.Key)).OrderBy(f => f.Name).ToList(); refresh();
+            var grid = Grid(false); grid.ItemsSource = columns;
+            grid.Columns.Add(new DataGridCheckBoxColumn { Header = "Show", Binding = new Binding("Visible") { Mode = BindingMode.TwoWay }, Width = 70 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Field", Binding = new Binding("Name"), IsReadOnly = true, Width = 250 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Heading", Binding = new Binding("Heading") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, Width = 330 });
+            grid.Columns.Add(new DataGridCheckBoxColumn { Header = "Calculate totals", Binding = new Binding("Total") { Mode = BindingMode.TwoWay }, Width = 140 }); body.Children.Add(grid);
+            foreach (var label in new[] { "Add field", "Move up", "Move down", "Remove" }) {
+                var action = label; var button = Button(dialog, label, false); actions.Children.Add(button);
+                button.Click += (s, e) => {
+                    grid.CommitEdit(); var column = grid.SelectedItem as NativeField;
+                    if (action == "Add field") { var field = available.SelectedItem as NativeField; if (field != null) columns.Add(field.Clone()); }
+                    else if (column != null) { int index = columns.IndexOf(column); if (action == "Remove") columns.Remove(column); else { int destination = index + (action == "Move up" ? -1 : 1); if (destination >= 0 && destination < columns.Count) columns.Move(index, destination); } }
+                    refresh();
+                };
+            }
+            var footer = Actions(layout); var cancel = Button(dialog, "Cancel", false); cancel.Click += (s, e) => dialog.Close(); footer.Children.Add(cancel);
+            var apply = Button(dialog, "Apply", true); footer.Children.Add(apply);
+            apply.Click += (s, e) => { try {
+                grid.CommitEdit(DataGridEditingUnit.Cell, true); grid.CommitEdit(DataGridEditingUnit.Row, true);
+                if (string.IsNullOrWhiteSpace(title.Text) || columns.Any(c => string.IsNullOrWhiteSpace(c.Heading)) || !columns.Any(c => c.Visible)) throw new InvalidOperationException("Enter a title and headings, and keep at least one visible field.");
+                working.Title = title.Text.Trim(); working.Fields = columns.ToList();
+                working.Settings.Validate(working.Fields.Select(f => f.Key), true); accepted(working); dialog.DialogResult = true;
+            } catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Schedule fields"); } };
+            return dialog;
+        }
+
+        internal static Window BuildScheduleSelection(Window owner, IList<ScheduleRequest> requests)
+        {
+            var dialog = Base(owner, "Select Revit schedules for Excel", 820, 580);
+            var layout = Rows(dialog, "Select schedules to export", "Each selected category becomes one worksheet in the same .xlsx file, using its own title, fields, filters and sorting/grouping.");
+            var grid = Grid(false); grid.ItemsSource = requests;
+            grid.Columns.Add(new DataGridCheckBoxColumn { Header = "Select", Binding = new Binding("IsSelected") { Mode = BindingMode.TwoWay }, Width = 65 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Category", Binding = new Binding("CategoryName"), IsReadOnly = true, Width = 240 });
+            grid.Columns.Add(new DataGridTextColumn { Header = "Schedule title", Binding = new Binding("ScheduleName"), IsReadOnly = true, Width = 390 });
+            layout.Children.Add(grid); System.Windows.Controls.Grid.SetRow(grid, 2);
+            var actions = Actions(layout);
+            foreach (bool select in new[] { true, false }) { bool value = select; var button = Button(dialog, select ? "All" : "None", false); button.Click += (s, e) => { foreach (var item in requests) item.IsSelected = value; grid.Items.Refresh(); }; actions.Children.Add(button); }
+            var cancel = Button(dialog, "Cancel", false); cancel.Click += (s, e) => dialog.Close(); actions.Children.Add(cancel);
+            var export = Button(dialog, "Export selected", true); actions.Children.Add(export);
+            export.Click += (s, e) => { grid.CommitEdit(DataGridEditingUnit.Cell, true); grid.CommitEdit(DataGridEditingUnit.Row, true); if (requests.Any(r => r.IsSelected)) dialog.DialogResult = true; else MessageBox.Show(dialog, "Select at least one schedule."); };
+            return dialog;
+        }
         internal static Window BuildNamesWindow(Window owner, IList<ScheduleRequest> requests, IEnumerable<string> existingNames)
         {
             var dialog = Base(owner, "Create Revit Schedules", 900, 560);
-            var layout = Rows(dialog, "Name each category schedule", "Creates one schedule per supported category. Native schedules use the entire model; field settings remain at their defaults.");
+            var layout = Rows(dialog, "Name each category schedule", requests.Any(r => r.Options?.ScopeElementIds != null) ?
+                "Creates scoped host schedules and stores a read-only MEP BOM Scope Membership parameter on their elements (hidden column in schedules). Linked documents are not modified. The entire batch is one Revit Undo operation." :
+                "Creates one schedule per category using configured fields, filters and sorting/grouping. Scope: entire host model.");
             var grid = Grid(false);
             grid.ItemsSource = requests;
             grid.Columns.Add(new DataGridTextColumn { Header = "Category", Binding = new Binding("CategoryName"), IsReadOnly = true, Width = 210 });

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -29,11 +30,11 @@ internal static class SmokeTests
             Type = "Standard", System = system, Size = "D=25 mm", SizeKey = sizeKey, Quantity = quantity, Unit = "m", Note = "" };
     }
 
-    public static int Main()
+    public static int Main(string[] args)
     {
         try
         {
-            string folder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
+            string folder = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Output");
             Directory.CreateDirectory(folder);
             var result = new BomResult { Model = "Mô hình thử nghiệm", Scope = "EntireModel" };
             result.Elements.Add(Record(12, 10, "CHW", "exact-size-a", 1.23456));
@@ -162,7 +163,64 @@ internal static class SmokeTests
             names[1].ScheduleName = "Ducts: BOM"; ExpectFailure(() => ScheduleNames.Validate(names, new string[0]), "Invalid schedule name must fail.");
             string noSplit = Path.Combine(folder, "No_Category_Sheets.xlsx"); ExcelExporter.Export(noSplit, modified, categorySheets: false);
             using (var archive = ZipFile.OpenRead(noSplit)) Check(Read(archive, "xl/workbook.xml").Descendants(S + "sheet").Count() == 3, "Category sheets option did not switch off.");
-            Console.WriteLine("PASS: " + checks + " checks (BOM, XLSX/template, category sheets, column layout, required fields and schedule names).");
+            var unavailable = new CategoryOption { Id = 99, Name = "Absent", Count = 0, IsSelected = true };
+            Check(!unavailable.IsAvailable && !unavailable.IsSelected, "Absent category must not be selectable.");
+            var queryRecords = new List<ElementRecord> {
+                new ElementRecord { ElementId = 1, CategoryId = 1, TypeId = 1, Category = "Pipes", Family = "Pipe", Type = "A", System = "CHWS", Unit = "m", Quantity = 2 },
+                new ElementRecord { ElementId = 2, CategoryId = 1, TypeId = 1, Category = "Pipes", Family = "Pipe", Type = "A", System = "CHWS", Unit = "m", Quantity = 3 },
+                new ElementRecord { ElementId = 3, CategoryId = 2, TypeId = 2, Category = "Valves", Family = "Valve", Type = "B", System = "CHWR", Unit = "pcs", Quantity = 1 }
+            };
+            var query = new PreviewSettings { Itemized = true, Filters = new List<PreviewFilter> { new PreviewFilter { Field = "Quantity", Operator = "GreaterThan", Value = "1" } }, Sorts = new List<PreviewSort> { new PreviewSort { Field = "Quantity", Descending = true } } };
+            var queried = BomQuery.Apply(queryRecords, query);
+            Check(queried.Count == 2 && queried[0].Quantity == 3 && queried[1].Quantity == 2, "Numeric filters/sorts or itemization failed.");
+            query.Itemized = false; query.Filters.Clear(); query.Sorts = new List<PreviewSort> { new PreviewSort { Field = "System", Header = true, Footer = true, BlankLine = true } }; query.GrandTotal = true;
+            queried = BomQuery.Apply(queryRecords, query);
+            Check(queried.Count(r => r.ExtraValues.ContainsKey("__decoration") && r.ExtraValues["__decoration"] == "total") == 4, "Totals must remain separate by unit.");
+            Check(queried.Where(r => !r.ExtraValues.ContainsKey("__decoration")).Sum(r => r.ElementCount) == 3, "Grouping lost instances.");
+            Check(BomQuery.Match("CHWS", new PreviewFilter { Operator = "BeginsWith", Value = "chw" }), "Text filters must be case-insensitive.");
+            Check(BomQuery.Match("", new PreviewFilter { Operator = "HasNoValue" }), "Empty-value filter failed.");
+            queryRecords[0].GlobalParameters["param:123"] = 456;
+            var associationQuery = new PreviewSettings { Filters = new List<PreviewFilter> { new PreviewFilter { Field = "param:123", Operator = "IsAssociatedWithGlobalParameter", Value = "456" } } };
+            Check(BomQuery.Apply(queryRecords, associationQuery).Single().ElementIds == "1", "Global parameter association must filter instances before grouping.");
+            Check(queried.Where(r => r.ExtraValues.ContainsKey("__decoration") && r.ExtraValues["__decoration"] == "blank").All(r => (string)BomLayout.Value(r, "Quantity") == ""), "Blank lines must not display zero quantities.");
+            var clone = query.Clone(); clone.Sorts[0].Field = "Type"; Check(query.Sorts[0].Field == "System", "Settings clone must not mutate the source.");
+            string nativeExport = Path.Combine(folder, "Selected_Schedules.xlsx");
+            ExcelExporter.ExportSchedules(nativeExport, new Dictionary<string, List<object[]>> {
+                { "Pipes / CHW", new List<object[]> { new object[] { "Type", "Length" }, new object[] { "A", "5 m" } } },
+                { "Valves", new List<object[]> { new object[] { "Type", "Count" }, new object[] { "B", "1" } } }
+            });
+            using (var archive = ZipFile.OpenRead(nativeExport)) { ValidatePackage(archive); Check(Read(archive, "xl/workbook.xml").Descendants(S + "sheet").Count() == 2, "Selected schedules must export to separate sheets."); }
+            var linkedRecord = Record(12, 10, "CHW", "exact-size-a", 1);
+            linkedRecord.SourceKey = "Link-A"; linkedRecord.SourceName = "MEP Link"; linkedRecord.LinkInstanceId = 900;
+            Check(BomAggregator.Aggregate(new[] { result.Elements[0], linkedRecord }).Count == 2, "Host/link IDs must not merge.");
+            var beforeSnapshot = new BomSnapshot { ModelKey = "model", Scope = "view", Elements = new List<ElementRecord> { Record(1, 1, "S", "a", 2), Record(2, 1, "S", "a", 1) } };
+            var afterSnapshot = new BomSnapshot { ModelKey = "model", Scope = "view", Elements = new List<ElementRecord> { Record(1, 1, "S", "a", 3), Record(3, 1, "S", "a", 4) } };
+            var changes = StudioState.Compare(beforeSnapshot, afterSnapshot);
+            Check(changes.Count == 3 && changes.Any(c => c.Change == "Added") && changes.Any(c => c.Change == "Removed") && changes.Single(c => c.Change == "Changed").Delta == 1, "Snapshot comparison lost added/removed/changed quantities.");
+            afterSnapshot.ModelKey = "other"; ExpectFailure(() => StudioState.Compare(beforeSnapshot, afterSnapshot), "Cross-model comparisons must be rejected."); afterSnapshot.ModelKey = "model";
+            afterSnapshot.Scope = "other"; ExpectFailure(() => StudioState.Compare(beforeSnapshot, afterSnapshot), "Cross-scope comparisons must be rejected."); afterSnapshot.Scope = "view";
+            string presetPath = Path.Combine(folder, "Roundtrip.preset.xml");
+            StudioState.Save(presetPath, new StudioPreset { Layout = modified.Layout.Clone(), Query = query.Clone(), Schedules = new Dictionary<int, NativeScheduleOptions> { { 1, new NativeScheduleOptions { Title = "Ống", Fields = new List<NativeField> { new NativeField { Key = "key", Name = "Field", Heading = "Heading" } } } } }, IncludeLinks = true, Measurements = new List<MeasurementRule> { new MeasurementRule { CategoryId = 1, Category = "Pipes", Method = "Length" } } });
+            var loadedPreset = StudioState.Load<StudioPreset>(presetPath); loadedPreset.Layout.Validate();
+            Check(loadedPreset.IncludeLinks && loadedPreset.Schedules[1].Title == "Ống" && loadedPreset.Measurements[0].Method == "Length", "Preset fields/rules did not round-trip.");
+            string snapshotPath = Path.Combine(folder, "Roundtrip.bom.xml"); StudioState.Save(snapshotPath, beforeSnapshot);
+            Check(StudioState.Load<BomSnapshot>(snapshotPath).Elements.Count == 2, "Snapshot elements did not round-trip.");
+            Check(StudioState.Quality(new[] { new ElementRecord { Category = "Pipes", Quantity = 0, ElementId = 1 } }).Count == 1, "Missing-system/size/zero-quantity warning missing.");
+            Check(StudioState.ColumnNumber("AA") == 27 && StudioState.ColumnNumber("XFD") == 16384, "Excel column mapping incorrect.");
+            ExpectFailure(() => StudioState.ColumnNumber("XFE"), "Out-of-range template columns must be rejected.");
+            var mappedResult = new BomResult { Model = "Mapping", Scope = "Test", Elements = result.Elements, Rows = result.Rows, Layout = result.Layout.Clone(), TemplateTotalRow = 20 };
+            mappedResult.TemplateMapping = mappedResult.Layout.Columns.Select((c, i) => new TemplateMapping { Field = c.Key, Heading = c.Header, Column = ((char)('B' + i * 2)).ToString() }).ToList();
+            string mappedTemplate = Path.Combine(folder, "Mapping_Template.xlsx"); File.Copy(basic, mappedTemplate);
+            using (var archive = ZipFile.Open(mappedTemplate, ZipArchiveMode.Update)) {
+                string path = SheetPath(archive, "BOM"); var sheetDoc = Read(archive, path); var sheetData = sheetDoc.Root.Element(S + "sheetData"); sheetData.Elements(S + "row").Where(r => (int)r.Attribute("r") >= 6).Remove();
+                sheetData.Add(new XElement(S + "row", new XAttribute("r", 6), new XElement(S + "c", new XAttribute("r", "A6"), new XElement(S + "f", "1+1")))); Write(archive, path, sheetDoc);
+            }
+            string mappedOutput = Path.Combine(folder, "Mapped_Output.xlsx"); ExcelExporter.Export(mappedOutput, mappedResult, mappedTemplate, "BOM", 6, false);
+            using (var archive = ZipFile.OpenRead(mappedOutput)) {
+                var sheetDoc = Read(archive, SheetPath(archive, "BOM")); Check(sheetDoc.Descendants(S + "c").Single(c => (string)c.Attribute("r") == "A6").Element(S + "f").Value == "1+1", "Unmapped formula column was overwritten.");
+                Check(sheetDoc.Descendants(S + "c").Any(c => (string)c.Attribute("r") == "P20" && c.Element(S + "v") != null), "Mapped total row missing."); ValidatePackage(archive);
+            }
+            Console.WriteLine("PASS: " + checks + " checks (BOM, XLSX/templates/mapping, source identities, snapshots/presets, quality, queries and schedule names).");
             Console.WriteLine("Fixtures: " + folder);
             return 0;
         }

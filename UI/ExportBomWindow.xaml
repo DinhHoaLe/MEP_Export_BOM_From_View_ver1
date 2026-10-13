@@ -124,6 +124,7 @@
                     </Grid>
                 </Border>
                 <ControlTemplate.Triggers>
+                    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="surface" Property="Opacity" Value="0.4"/></Trigger>
                     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#F2EEE9"/></Trigger>
                     <Trigger Property="IsChecked" Value="True">
                         <Setter TargetName="surface" Property="Background" Value="#F2EEE9"/>
@@ -139,8 +140,17 @@
             <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter>
         </Style>
         <Style TargetType="DataGridColumnHeader">
+            <Setter Property="ToolTip" Value="{Binding Content, RelativeSource={RelativeSource Self}}"/>
             <Setter Property="Background" Value="{StaticResource Surface}"/><Setter Property="Foreground" Value="{StaticResource Muted}"/>
             <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Padding" Value="12,0"/><Setter Property="Height" Value="42"/><Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style x:Key="TableText" TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/></Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{StaticResource Muted}"/><Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TabItem">
+                <Border x:Name="TabSurface" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="8,8,0,0" Padding="{TemplateBinding Padding}" Margin="0,0,6,0"><ContentPresenter ContentSource="Header"/></Border>
+                <ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="TabSurface" Property="Background" Value="White"/><Setter Property="Foreground" Value="{StaticResource AccentDark}"/></Trigger></ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
         </Style>
         <Style TargetType="DataGridCell">
             <Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="12,0"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
@@ -151,16 +161,13 @@
         </Style>
         <Style TargetType="DataGridRow">
             <Setter Property="Background" Value="White"/><Setter Property="MinHeight" Value="42"/>
-            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridRow">
-                <Border x:Name="surface" Background="{TemplateBinding Background}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" CornerRadius="8" Margin="2,2">
-                    <DataGridCellsPresenter/>
-                </Border>
-                <ControlTemplate.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="surface" Property="Background" Value="#F2EEE9"/></Trigger>
-                    <Trigger Property="IsSelected" Value="True"><Setter TargetName="surface" Property="Background" Value="#E8E2DA"/></Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate></Setter.Value></Setter>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/><Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#F2EEE9"/></Trigger>
+                <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#E8E2DA"/></Trigger>
+            </Style.Triggers>
         </Style>
+        <Style x:Key="BomRowStyle" TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}"><Style.Triggers><DataTrigger Binding="{Binding IsSummary}" Value="True"><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Background" Value="{StaticResource Surface}"/></DataTrigger><DataTrigger Binding="{Binding HasWarnings}" Value="True"><Setter Property="Background" Value="#FFF3D7"/><Setter Property="ToolTip" Value="{Binding Warnings}"/></DataTrigger></Style.Triggers></Style>
     </Window.Resources>
     <Border Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}" BorderThickness="1">
         <Grid><Grid.RowDefinitions><RowDefinition Height="62"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -177,21 +184,22 @@
                 </StackPanel>
             </Grid>
             <Grid Grid.Row="1" Margin="28,8,28,22">
-                <Grid.RowDefinitions><RowDefinition Height="88"/><RowDefinition Height="*"/><RowDefinition Height="16"/><RowDefinition Height="132"/><RowDefinition Height="56"/></Grid.RowDefinitions>
+                <Grid.RowDefinitions><RowDefinition Height="118"/><RowDefinition Height="*"/><RowDefinition Height="16"/><RowDefinition Height="132"/><RowDefinition Height="56"/></Grid.RowDefinitions>
                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="VIEW → BILL OF MATERIALS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource AccentDark}"/>
                         <TextBlock Text="Build your material overview" FontSize="27" FontWeight="SemiBold" Margin="0,6,0,5"/>
                         <TextBlock x:Name="ModelText" Text="Choose a scope, select categories and review quantities." Foreground="{StaticResource Muted}" TextTrimming="CharacterEllipsis"/>
+                        <WrapPanel Margin="0,8,0,0"><Button x:Name="RefreshButton" Content="Refresh" Style="{StaticResource ChipButton}" Margin="0,0,6,0"/><Button x:Name="StudioToolsButton" Content="Tools ▾" Style="{StaticResource ChipButton}" Margin="0,0,6,0"/><Button x:Name="HighlightButton" Content="Highlight / Close" Style="{StaticResource ChipButton}" Margin="0,0,6,0" ToolTip="Select BOM rows, then close the tool to show those elements in Revit."/><CheckBox x:Name="IncludeLinksCheck" Content="Include Revit Links" Style="{StaticResource CategoryCheck}" Padding="5,2"/></WrapPanel>
                     </StackPanel>
                     <Button x:Name="PreviewButton" Grid.Column="1" Content="Preview BOM  →" Style="{StaticResource PrimaryButton}" IsEnabled="False" VerticalAlignment="Center"/>
                 </Grid>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="310"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <Grid><Grid.RowDefinitions><RowDefinition Height="176"/><RowDefinition Height="14"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                        <Border Style="{StaticResource Card}"><StackPanel>
+                    <Grid><Grid.RowDefinitions><RowDefinition Height="150"/><RowDefinition Height="14"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <Border Style="{StaticResource Card}" Padding="14"><StackPanel>
                             <TextBlock Text="01  /  EXPORT SCOPE" Style="{StaticResource Field}" Foreground="{StaticResource AccentDark}"/>
-                            <ComboBox x:Name="ScopeCombo" Margin="0,4,0,12">
+                            <ComboBox x:Name="ScopeCombo" Margin="0,4,0,8">
                                 <ComboBoxItem Content="Entire Model"/><ComboBoxItem Content="3D View"/><ComboBoxItem Content="Floor Plan"/><ComboBoxItem Content="Scope Box"/>
                             </ComboBox>
                             <TextBlock Text="VIEW / SCOPE BOX" Style="{StaticResource Field}"/>
@@ -212,14 +220,14 @@
                                 <Grid Grid.Row="3">
                                     <ListBox x:Name="CategoryList" BorderThickness="0" Background="White" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
                                         <ListBox.ItemTemplate><DataTemplate>
-                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CategoryCheck}">
+                                                <CheckBox IsEnabled="{Binding IsAvailable}" ToolTip="{Binding Availability}" IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource CategoryCheck}">
                                                     <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" VerticalAlignment="Center"/>
                                                 </CheckBox>
                                         </DataTemplate></ListBox.ItemTemplate>
                                     </ListBox>
                                     <TextBlock x:Name="EmptyCategories" Text="Click Preview BOM to load categories." Foreground="{StaticResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10"/>
                                 </Grid>
-                                <TextBlock Grid.Row="4" Text="Only categories with elements in this scope." FontSize="10" Foreground="{StaticResource Muted}" Margin="5,7,0,0"/>
+                                <TextBlock Grid.Row="4" Text="Absent categories are disabled. Selection updates preview." FontSize="10" TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="5,7,0,0"/>
                             </Grid>
                         </Border>
                     </Grid>
@@ -230,8 +238,12 @@
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock x:Name="ElementMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="ELEMENTS" Style="{StaticResource Field}"/></StackPanel>
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock x:Name="RowMetric" Text="—" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="BOM ROWS" Style="{StaticResource Field}"/></StackPanel>
                             </Grid>
+                            <TabControl x:Name="PreviewTabs" Grid.Row="1">
+                            <TabItem><TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="BOM Preview" VerticalAlignment="Center" Margin="0,0,8,0"/><Button x:Name="ModifyTitleButton" Content="Modify Title" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11"/></StackPanel></TabItem.Header>
+                            <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                <StackPanel Orientation="Horizontal" Margin="4,8"><Button x:Name="BomQueryButton" Content="Filter / Sorting &amp; Grouping" Style="{StaticResource ChipButton}" IsEnabled="False"/><TextBlock x:Name="BomQuerySummary" Text="No filters · BOM groups" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/></StackPanel>
                             <Grid Grid.Row="1">
-                                <DataGrid x:Name="BomGrid" Background="White" BorderThickness="0" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="None" SelectionUnit="FullRow" RowHeight="42" EnableRowVirtualization="True" EnableColumnVirtualization="True">
+                                <DataGrid x:Name="BomGrid" RowStyle="{StaticResource BomRowStyle}" Background="White" BorderThickness="0" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="None" SelectionUnit="FullRow" RowHeight="42" EnableRowVirtualization="True" EnableColumnVirtualization="True">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="#" Binding="{Binding No}" Width="36"/>
                                         <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="115"/>
@@ -250,7 +262,15 @@
                                     <TextBlock Text="Your BOM starts with a view" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,12,0,6"/>
                                     <TextBlock Text="Choose your scope and view, then click Preview BOM." Foreground="{StaticResource Muted}" HorizontalAlignment="Center"/>
                                 </StackPanel>
-                            </Grid>
+                            </Grid></Grid></TabItem>
+                            <TabItem><TabItem.Header><WrapPanel><TextBlock Text="Revit Schedule Preview" VerticalAlignment="Center" Margin="0,0,8,0"/><Button x:Name="ScheduleTitleButton" Content="Modify Title" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11"/><Button x:Name="CreateScheduleButton" Content="Create Revit Schedules" Style="{StaticResource ChipButton}" IsEnabled="False" Padding="6,3" FontSize="11" Margin="6,0,0,0"/></WrapPanel></TabItem.Header>
+                                <Grid Background="White"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                                    <WrapPanel Margin="8"><TextBlock Text="Category" VerticalAlignment="Center" Margin="0,0,12,0"/><ComboBox x:Name="ScheduleCategoryCombo" DisplayMemberPath="Name" MinWidth="160"/><Button x:Name="ScheduleQueryButton" Content="Filter / Sorting &amp; Grouping" Style="{StaticResource ChipButton}" Margin="8,0,0,0" IsEnabled="False"/><CheckBox x:Name="MatchScopeCheck" Content="Match BOM scope (host)" IsChecked="True" Style="{StaticResource CategoryCheck}" Padding="5,2" ToolTip="Preview rolls back the scope marker. Create persists a read-only membership parameter on scoped host elements; its schedule column is hidden."/></WrapPanel>
+                                    <TextBlock Grid.Row="1" x:Name="SchedulePreviewStatus" Text="Preview BOM first, then select a category. Native schedules include the entire host model." TextWrapping="Wrap" Margin="8"/>
+                                    <DataGrid Grid.Row="2" x:Name="ScheduleGrid" IsReadOnly="True" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column" GridLinesVisibility="None" Background="White" BorderThickness="0" RowHeight="42">
+                                    </DataGrid>
+                                </Grid>
+                            </TabItem></TabControl>
                             <TextBlock Grid.Row="2" Text="MEP curves in meters  ·  Other elements in pieces  ·  Full element quantities" FontSize="10" Foreground="{StaticResource Muted}" VerticalAlignment="Bottom"/>
                         </Grid>
                     </Border>
@@ -274,8 +294,7 @@
                 <Grid Grid.Row="4" Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                     <TextBlock x:Name="StatusText" Foreground="{StaticResource AccentDark}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,18,0" Text="Choose your scope and categories."/>
                     <Button x:Name="NotesButton" Grid.Column="1" Content="Notes" Style="{StaticResource SecondaryButton}" IsEnabled="False" MinWidth="70"/>
-                    <Button x:Name="ModifyTitleButton" Grid.Column="3" Content="Modify Title" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Edit the BOM title, headings and fields. Required common fields cannot be removed."/>
-                    <Button x:Name="CreateScheduleButton" Grid.Column="5" Content="Create Revit Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Name one entire-model schedule for each selected category; uses default Revit fields and closes this tool after acceptance."/>
+                    <Button x:Name="ExportSchedulesButton" Grid.Column="5" Content="Select / Export Schedules" Style="{StaticResource SecondaryButton}" IsEnabled="False" ToolTip="Select several category schedules to export as worksheets in one Excel workbook."/>
                     <Button x:Name="ExportButton" Grid.Column="7" Content="Export Excel  ↗" Style="{StaticResource PrimaryButton}" IsEnabled="False" MinWidth="146"/>
                 </Grid>
             </Grid>

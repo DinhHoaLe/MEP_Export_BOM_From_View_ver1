@@ -2,7 +2,7 @@
 
 Add-in C# cho **Revit 2023**, `.NET Framework 4.8`, x64. Chạy bằng **Add-In Manager (Manual)**.
 Command: `MEP_Export_BOM_From_View_ver1.ExportBomCommand`.
-Preview/Excel chỉ đọc model. Nút Create Revit Schedule tạo một ViewSchedule mới bằng transaction khi người dùng bấm; không gán/sửa parameter của element.
+Preview/Excel không lưu thay đổi vào model. Preview schedule theo phạm vi dùng transaction tạm rồi rollback. **Create Revit Schedules** tạo ViewSchedule; khi bật **Match BOM scope (host)**, thao tác còn tạo/bổ sung parameter chỉ đọc `MEP BOM Scope Membership` (cột bị ẩn trong schedule, hiện trong Properties khi có giá trị) và đánh dấu các element host thuộc phạm vi. Cả batch là một thao tác Undo. Model link không bị sửa.
 
 ## Chạy test bằng Add-In Manager
 
@@ -13,7 +13,7 @@ Preview/Excel chỉ đọc model. Nút Create Revit Schedule tạo một ViewSch
 5. Chọn phạm vi: **Entire Model / 3D View / Floor Plan / Scope Box**.
 6. Chọn view hoặc Scope Box. Entire Model không cần đối tượng này.
 7. Khi mới mở hoặc đổi phạm vi/view, danh sách category và bảng BOM trống. Bấm **Preview BOM** để quét phạm vi và hiện category có element; lần đầu chọn nhóm MEP mặc định, nếu không có MEP thì chọn toàn bộ nhóm có trong vùng.
-8. Chọn lại category rồi bấm **Preview BOM**. **MEP / All / None** chọn/bỏ các nhóm. Review và Show all đã bỏ. Kiểm tra **Notes**; dùng **Modify Title** để đổi title/cột nếu cần.
+8. Tick/bỏ tick category để cập nhật bảng ngay; không phải bấm Preview lại. **MEP / All / None** chọn/bỏ các nhóm có dữ liệu. Category không có trong phạm vi vẫn hiện cuối danh sách, màu nhạt và disabled; tooltip ghi rõ không có dữ liệu. Chỉ cần Preview lần đầu hoặc sau khi đổi phạm vi/view/Scope Box. Kiểm tra **Notes**; mỗi tab có **Modify Title** riêng cạnh tên tab.
 9. Để trống Template để xuất form mặc định; hoặc chọn template `.xlsx`, tên sheet và dòng bắt đầu ghi.
 10. Bấm **Export Excel**, chọn file mới và mở bằng Excel để kiểm tra.
 
@@ -28,20 +28,50 @@ Sau khi thay code, build lại và load/reload DLL trong Add-In Manager. Nếu D
 | Floor Plan | Collector theo view; kiểm tra bounding box với Crop Region nếu đang bật |
 | Scope Box | Kiểm tra giao giữa bounding box element và vùng Scope Box, hỗ trợ Scope Box xoay |
 
-- Bản này chỉ thống kê **host model**, chưa lấy element trong Revit Link.
+- Mặc định thống kê host. Bật **Include Revit Links** để lấy thêm các link trực tiếp đã load; có cột Source và audit Link Instance ID/Unique ID. Link unload được ghi Notes. Chưa lấy nested link.
 - Chọn một view hoặc một Scope Box cho mỗi lần xuất.
-- Collector theo view phản ánh thiết lập Revit, không phải kiểm tra từng pixel thấy trên màn hình. Đối tượng bị che bởi đối tượng khác vẫn có thể được lấy.
+- Categories và BOM dùng cùng collector theo view, crop/section boundary và loại element/category bị ẩn. Không loại element chỉ vì không đọc được hình học hiển thị. Category có instance trong phạm vi được bật; các model category còn lại bị disabled. Đây không phải kiểm tra từng pixel; đối tượng bị che bởi đối tượng khác vẫn có thể được lấy. Entire Model và Scope Box dùng phạm vi model/vùng.
 - Lọc vùng dựa trên bounding box, có thể lấy dư nếu box chứa khoảng trống. Element không có bounding box sẽ không được lấy khi cần lọc vùng.
 - **Element giao biên được lấy toàn bộ khối lượng.** Ống dài 10 m, chỉ 3 m nằm trong Scope Box, vẫn thống kê 10 m.
 - 3D perspective và floor plan có split crop chưa hỗ trợ. Dùng 3D orthographic và crop không split.
 - `MEPCurve` (Pipe, Flex Pipe, Duct, Flex Duct, Cable Tray, Conduit...) cộng chiều dài, đơn vị `m`.
-- Các category còn lại đếm instance, đơn vị `pcs`. Chọn Walls/Floors sẽ đếm số element, chưa tính diện tích/thể tích.
-- Gom nhóm theo category ID, type ID, family/type, system, kích thước chính xác và đơn vị. Làm tròn hiển thị không làm gộp kích thước khác nhau.
+- Mặc định category khác đếm instance (`pcs`). **Tools → Measurement rules** đổi từng category sang Length (`m`), Area (`m²`) hoặc Volume (`m³`) khi element có built-in quantity phù hợp. Quantity không đọc được sẽ là 0 và được đánh dấu/cảnh báo. Quy tắc này áp dụng BOM/Excel; field và units native schedule cấu hình riêng.
+- Gom nhóm theo nguồn model/link instance, category ID, type ID, family/type, system, kích thước chính xác và đơn vị. ID trùng giữa host/link không bị gộp nhầm. Làm tròn hiển thị không làm gộp kích thước khác nhau.
 - Kích thước lấy từ built-in parameters; fitting/equipment có thể lấy từ connector. Kích thước hiển thị bằng mm.
 - System lấy từ parameter hoặc connector. Instance không có thông tin system để trống.
 - Element đọc lỗi được ghi trong Notes; cần kiểm tra Notes trước khi dùng BOM.
 
 ## Form Excel mặc định
+
+### Hai tab xem trước
+
+- **BOM Preview**: bảng khối lượng gom nhóm theo phạm vi và category được chọn; dùng cho xuất Excel.
+- **Revit Schedule Preview**: chọn một category được hỗ trợ trong các category đã chọn. Tool tạo schedule tạm theo cấu hình riêng của category, đọc bảng native của Revit rồi rollback toàn bộ schedule tạm. Cả hai bảng dùng style của dự án, có resize cột và tooltip cho nội dung dài. Không lưu schedule khi chỉ xem trước.
+- Mỗi tab có **Modify Title** riêng cạnh tên tab. BOM đổi title/cột Excel; Schedule đổi title, field native, heading, thứ tự, ẩn field và Calculate totals cho category đang xem. Field ẩn vẫn dùng được trong filter/sort. **Create Revit Schedules** nằm cạnh Modify Title của tab Schedule và dùng đúng cấu hình đã xem trước.
+- **Select / Export Schedules**: chọn nhiều category schedule bằng checkbox (All/None), xuất thành nhiều worksheet trong một `.xlsx`. Mỗi sheet dùng title, field, filter và sorting/grouping riêng. Không dùng template Excel của BOM cho chức năng này.
+- **Match BOM scope (host)** mặc định bật: schedule lấy chính các host instance còn lại trong BOM sau chọn category/filter, qua parameter membership chỉ đọc, cột ẩn và một filter Contains. Bỏ tick để dùng Entire host model. Phạm vi được ghi trên tab. Link không thuộc native schedule này; dùng BOM/Excel để thống kê link. Membership của schedule đã tạo là snapshot; Refresh BOM không tự sửa các schedule đã tạo trước đó.
+- Scope membership chiếm một filter native, nên khi bật Match scope chỉ dùng tối đa 7 user filter. Category không cho bind instance parameter, hoặc element/group/worksharing không cho ghi marker sẽ báo lỗi; batch không lưu một phần. Có thể dùng Entire host model cho những category đó.
+
+### Tools và đối chiếu
+
+- **Refresh** quét lại dữ liệu phạm vi khi model thay đổi; tick category tiếp tục dùng cache. Bật/tắt Include Links cũng yêu cầu quét lại.
+- **Highlight / Close**: chọn một/nhiều dòng BOM, bấm để đóng tool, chọn các instance và zoom trong Revit. Hỗ trợ reference đến linked element; nếu view không cho zoom, selection vẫn được giữ và Revit báo lý do.
+- **Tools → Save/Load preset** lưu title/cột, category, filter/sort/group, cấu hình native theo category, measurements, template mapping và tùy chọn links/scope vào `.preset.xml`. Có thể chọn vị trí lưu. Không tự mở file/template khi load. Field native được resolve lại theo built-in key hoặc tên/field type; field không thể resolve an toàn sẽ chặn load. Project-specific parameter cần model gốc; shared parameter dùng GUID để có thể dùng ở dự án khác.
+- **Quality / warnings** mở Notes. Dòng thiếu System/Size (Pipe/Duct), quantity không hợp lệ hoặc giá trị `<varies>` được đánh màu và có cột Warnings/tooltip. Audit giữ Source, Link Instance ID và Unique ID.
+- **Save BOM snapshot** lưu `.bom.xml`. Mỗi lần Export Excel cũng lưu snapshot cùng tên cạnh workbook. **Compare with previous snapshot** hiển thị Added/Removed/Changed và delta; có Export changes. So sánh dùng source + UniqueId, yêu cầu cùng project, view/scope, category/filter/link và measurement settings. Đổi unit chỉ ghi thay đổi, không trừ hai đơn vị khác nhau.
+- **Export existing Revit schedules** chọn nhiều schedule trong model để xuất mỗi schedule thành một sheet. Đây là đọc bảng hiện tại, không tạo/chỉnh schedule. Bảng dùng giá trị đã định dạng bởi Revit, bao gồm totals.
+- **Template column mapping** gán field vào cột bất kỳ (ví dụ B/D/F/AA), giữ ô/công thức ở cột không map; Sheet và Data row dùng controls chính. Header ở ngay trên Data row. Total row tùy chọn nằm dưới dữ liệu, chỉ dùng khi có một đơn vị. Không ghi đè ô có dữ liệu/công thức hoặc vùng merge; template gốc được giữ.
+- Revit Link theo view dùng bounding box đã biến đổi qua link transform, crop/section boundary và plan view range. Revit 2023 không có collector view/link giống phiên bản mới: linked-view/custom overrides, phase mapping và nested links không được tái tạo. Notes ghi rõ giới hạn; kiểm tra số liệu link trước khi sử dụng.
+
+### Filter / Sorting & Grouping
+
+- Cả hai tab có nút **Filter / Sorting & Grouping**, cấu hình độc lập. Tối đa 8 filter nối AND và 4 sort/group field theo thứ tự; có Move up/down. Click header đổi tăng/giảm, Shift-click thêm cấp sort. Các thao tác này tự cập nhật preview và áp dụng khi xuất/tạo schedule.
+- Điều kiện: Equal/NotEqual, Greater/Less (và OrEqual), Contains/NotContains, BeginsWith/EndsWith (và phủ định), HasValue/HasNoValue, HasParameter và association với global parameter (nhập ID). BOM association dùng field parameter và lọc instance trước khi gom nhóm. Revit kiểm tra field/operator native có được hỗ trợ trước khi nhận cấu hình; cấu hình không hợp lệ báo lỗi và giữ cấu hình cũ.
+- Native filter số dùng đơn vị project hoặc suffix đơn vị (ví dụ `50 mm`); filter ElementId/global parameter nhập ID. Có thể thêm field rồi ẩn nó để dùng filter/sort.
+- Chọn rule rồi **Load values** để chọn giá trị thực tế từ danh sách. Native ElementId hiện `ID · tên` nhưng lưu giá trị ID; text và numeric value theo parameter/project units. Global-parameter association vẫn nhập global parameter ID.
+- Sorting/Grouping có Ascending/Descending, Header, Footer, Footer title/count, Blank line, Itemize every instance, Grand totals, title/count và tên tổng. Native dùng trực tiếp ScheduleDefinition; BOM mô phỏng trên dữ liệu của phạm vi đã quét.
+- BOM filter chạy trên các dòng itemized hoặc dòng gom nhóm cơ sở trước khi group theo sort field. Quantity dùng `m`/`pcs`; parameter bổ sung là chuỗi hiển thị. Khi bỏ Itemize và chọn sort field, BOM gom theo các field đó và đơn vị; giá trị khác nhau hiển thị `<varies>`. Tổng luôn tách riêng `m` và `pcs`.
+- Dữ liệu phạm vi được cache trong lúc cửa sổ mở để tick category không quét lại Revit. Đổi phạm vi/view sẽ xóa cache và yêu cầu Preview mới; cấu hình từng tab/category được giữ trong phiên.
 
 Sheet **BOM**, header dòng 5, dữ liệu từ dòng 6:
 
@@ -119,6 +149,8 @@ Tạo hoặc dùng model nhỏ có 2 ống cùng type/system/diameter, 1 ống k
 Chạy `build.ps1 -RunSmokeTests` để build và chạy. Kết quả/fixture nằm trong `obj\SmokeTests`.
 Kiểm tra tự động không thay thế manual test trong Revit; chưa xác nhận runtime trên model thực tế.
 
+Manual test cho các tính năng Studio mới: Preview một view, đổi tick category và Refresh; thử link đã xoay và link unload; dùng Measurement rules cho Pipes/Walls/Floors rồi đối chiếu Properties; Save/Load preset và snapshot; so sánh Added/Removed/Changed; map cột không liên tiếp và kiểm tra công thức ở cột không map; chọn nhiều schedule có sẵn để xuất. Với Match BOM scope, kiểm tra element IDs/Count so với BOM host, xác nhận Preview không lưu parameter, Create tạo parameter chỉ đọc + schedule và Undo khôi phục cả batch. Thử worksharing/group để xác nhận không có batch lưu một phần khi marker không ghi được. Highlight thử cả host và linked instance.
+
 ## Các file chính
 
 - `Class1.cs`: command dùng `[Transaction(TransactionMode.Manual)]`.
@@ -157,6 +189,6 @@ Manual test bổ sung: khi mới mở, scope/view chưa chọn, category/BOM tr�
 - Danh sách **Available common parameters** gồm parameter instance/type có mặt trên mọi element đang được thống kê. Chọn parameter → Add field. Chưa chọn nhiều category vẫn phải thỏa điều kiện trên mọi element của category đó. Parameter có nhưng chưa gán giá trị sẽ để trống.
 - Parameter thêm được hiển thị theo giá trị/đơn vị Revit. Nếu một nhóm BOM có nhiều giá trị khác nhau, hiển thị `<varies>`; không lấy ngẫu nhiên giá trị của element đầu tiên.
 - Apply cập nhật preview, sheet BOM và sheet từng category; Cancel giữ cấu hình cũ. Các sheet Elements/Notes giữ cấu trúc audit.
-- Khi thay phạm vi/category, parameter phụ không còn chung sẽ bị bỏ khỏi lần xuất đó và ghi trong Notes. Các thiết lập cột giữ trong phiên cửa sổ tool, chưa lưu profile ra file.
+- Khi thay phạm vi/category, parameter phụ không còn chung sẽ bị bỏ khỏi lần xuất đó và ghi trong Notes. Dùng Tools → Save preset để lưu cấu hình ra file.
 - **Revit Schedule vẫn dùng các field mặc định**; Modify Title chỉ áp dụng BOM/Excel theo yêu cầu.
 - Manual test: đổi Quantity thành tên khác, chuyển vị trí, ẩn System/Size, thêm Comments; thử xóa/ẩn Category/Quantity và kiểm tra bị khóa; export kiểm tra title/heading/value tương ứng trên BOM và các category sheet.

@@ -7,13 +7,14 @@ namespace MEP_Export_BOM_From_View_ver1
     {
         public static List<BomRow> Aggregate(IEnumerable<ElementRecord> records)
         {
-            var rows = records.GroupBy(e => new { e.CategoryId, e.TypeId, e.Family, e.Type, e.System, e.SizeKey, e.Unit })
+            var rows = records.GroupBy(e => new { e.SourceKey, e.CategoryId, e.TypeId, e.Family, e.Type, e.System, e.SizeKey, e.Unit })
                 .Select(group =>
                 {
                     var first = group.First();
                     return new BomRow
                     {
                         Category = first.Category, Family = first.Family, Type = first.Type,
+                        Source = first.SourceName, RecordKeys = group.Select(e => e.Identity).ToList(),
                         System = first.System, Size = first.Size, Unit = first.Unit,
                         Quantity = group.Sum(e => e.Quantity), ElementCount = group.Count(),
                         ElementIds = string.Join(", ", group.Select(e => e.ElementId).OrderBy(id => id)),

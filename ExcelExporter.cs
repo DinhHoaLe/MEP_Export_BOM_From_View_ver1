@@ -19,6 +19,29 @@ namespace MEP_Export_BOM_From_View_ver1
         private static readonly XNamespace C = "http://schemas.openxmlformats.org/package/2006/content-types";
         private const string WorksheetType = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet";
 
+        public static void ExportSchedules(string outputPath, IDictionary<string, List<object[]>> schedules)
+        {
+            if (schedules == null || schedules.Count == 0) throw new InvalidOperationException("Select at least one schedule.");
+            outputPath = Path.GetFullPath(outputPath);
+            string temporary = Path.Combine(Path.GetDirectoryName(outputPath), ".schedule-" + Guid.NewGuid().ToString("N") + ".xlsx");
+            try {
+                using (var archive = ZipFile.Open(temporary, ZipArchiveMode.Update)) {
+                    CreatePackage(archive);
+                    foreach (var schedule in schedules) {
+                        if (schedule.Value.Count > 1048575 || schedule.Value.Any(r => r.Length > 16384)) throw new InvalidOperationException("Schedule exceeds Excel row/column limits.");
+                        var rows = new List<XElement> { Row(1, new object[] { schedule.Key }) }; int index = 2;
+                        foreach (var values in schedule.Value) { rows.Add(Row(index, values, index == 2 ? 1 : 0)); index++; }
+                        int columns = Math.Max(1, schedule.Value.Select(r => r.Length).DefaultIfEmpty(1).Max());
+                        var worksheet = Worksheet(rows, columns, index - 1, false);
+                        var pane = worksheet.Descendants(S + "pane").Single(); pane.SetAttributeValue("ySplit", 2); pane.SetAttributeValue("topLeftCell", "A3");
+                        foreach (var column in worksheet.Descendants(S + "col")) column.SetAttributeValue("width", 30);
+                        AppendSheet(archive, schedule.Key, worksheet);
+                    }
+                }
+                if (File.Exists(outputPath)) File.Replace(temporary, outputPath, null); else File.Move(temporary, outputPath);
+            } finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
         public static void Export(string outputPath, BomResult result, string templatePath = "", string sheetName = "", int firstDataRow = 6, bool categorySheets = true)
         {
             if (result == null || result.Rows.Count == 0) throw new InvalidOperationException("No BOM data to export.");
@@ -136,7 +159,7 @@ namespace MEP_Export_BOM_From_View_ver1
             {
                 var subset = new BomResult { Model = result.Model, Scope = result.Scope + " / " + group.First().Category,
                     Layout = result.Layout.Clone(), Elements = group.ToList() };
-                subset.Rows = BomAggregator.Aggregate(subset.Elements);
+                subset.Rows = result.Query == null ? BomAggregator.Aggregate(subset.Elements) : BomQuery.Apply(subset.Elements, result.Query);
                 var document = BuildBom(subset);
                 AppendSheet(archive, group.First().Category, styled ? document : WithoutStyles(document));
             }
@@ -145,11 +168,11 @@ namespace MEP_Export_BOM_From_View_ver1
         private static XDocument BuildElements(BomResult result)
         {
             var rows = Metadata(result, "ELEMENT AUDIT - FULL ELEMENT QUANTITIES");
-            rows.Add(Row(5, new object[] { "Element ID", "Category", "Family", "Type", "System", "Size", "Unit", "Quantity", "Note" }, 1));
+            rows.Add(Row(5, new object[] { "Element ID", "Category", "Family", "Type", "System", "Size", "Unit", "Quantity", "Note", "Source", "Link Instance ID", "Unique ID" }, 1));
             int index = 6;
             foreach (var item in result.Elements.OrderBy(e => e.ElementId))
-                rows.Add(Row(index++, new object[] { item.ElementId, item.Category, item.Family, item.Type, item.System, item.Size, item.Unit, item.Quantity, item.Note }));
-            return Worksheet(rows, 9, index - 1, true);
+                rows.Add(Row(index++, new object[] { item.ElementId, item.Category, item.Family, item.Type, item.System, item.Size, item.Unit, item.Quantity, item.Note, item.SourceName, item.LinkInstanceId, item.UniqueId }));
+            return Worksheet(rows, 12, index - 1, true);
         }
 
         private static XDocument BuildNotes(BomResult result)
@@ -246,7 +269,17 @@ namespace MEP_Export_BOM_From_View_ver1
             if (data == null || document.Root.Element(S + "sheetProtection") != null || document.Root.Element(S + "tableParts") != null)
                 throw new InvalidOperationException("Template data sheet must be unprotected and must not contain Excel tables.");
             int end = start + result.Rows.Count - 1;
-            int columnCount = result.Layout.Columns.Count(c => c.IsVisible);
+            var visibleColumns = result.Layout.Columns.Where(c => c.IsVisible).ToList();
+            bool mapped = result.TemplateMapping.Count > 0;
+            if (mapped && visibleColumns.Any(c => result.TemplateMapping.All(m => m.Field != c.Key)))
+                throw new InvalidOperationException("Template mapping is missing fields: " + string.Join(", ", visibleColumns.Where(c => result.TemplateMapping.All(m => m.Field != c.Key)).Select(c => c.Header)) + ". Update Tools > Template column mapping.");
+            var targetColumns = visibleColumns.Select((c, i) => mapped ? StudioState.ColumnNumber(result.TemplateMapping.FirstOrDefault(m => m.Field == c.Key)?.Column) : i + 1).ToArray();
+            if (targetColumns.Distinct().Count() != targetColumns.Length) throw new InvalidOperationException("Template columns must be unique.");
+            var outputColumns = new HashSet<int>(targetColumns);
+            int columnCount = targetColumns.Max();
+            if (result.TemplateTotalRow != 0 && (result.TemplateTotalRow <= end || result.TemplateTotalRow > 1048576)) throw new InvalidOperationException("Total row must be below all BOM data and within Excel row limits.");
+            var actualRows = result.Rows.Where(r => !r.IsDecoration).ToList();
+            if (result.TemplateTotalRow != 0 && actualRows.Select(r => r.Unit).Distinct().Count() > 1) throw new InvalidOperationException("A template total row requires a single unit. Use BOM grouping totals for mixed units.");
             string lastColumn = Column(columnCount);
             var merges = document.Root.Element(S + "mergeCells");
             if (merges != null)
@@ -254,7 +287,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 {
                     var range = ((string)merge.Attribute("ref")).Split(':');
                     var a = Address(range[0]); var b = Address(range.Length > 1 ? range[1] : range[0]);
-                    if (a.Item1 <= columnCount && b.Item1 >= 1 && a.Item2 <= end && b.Item2 >= Math.Max(1, start - 1))
+                    if (outputColumns.Any(col => col >= a.Item1 && col <= b.Item1) && ((a.Item2 <= end && b.Item2 >= Math.Max(1, start - 1)) || (result.TemplateTotalRow > 0 && a.Item2 <= result.TemplateTotalRow && b.Item2 >= result.TemplateTotalRow)))
                         throw new InvalidOperationException("Merged cells overlap the output/header area A" + Math.Max(1, start - 1) + ":" + lastColumn + end + ". Use an unmerged data area.");
                 }
             var styles = new Dictionary<int, string>();
@@ -262,11 +295,11 @@ namespace MEP_Export_BOM_From_View_ver1
             var rowAttributes = seed == null ? new List<XAttribute>() : seed.Attributes().Where(a => a.Name != "r" && a.Name != "spans").Select(a => new XAttribute(a)).ToList();
             if (seed != null)
                 foreach (var cell in seed.Elements(S + "c"))
-                { int column = Address((string)cell.Attribute("r")).Item1; if (column <= columnCount) styles[column] = (string)cell.Attribute("s"); }
+                { int column = Address((string)cell.Attribute("r")).Item1; if (outputColumns.Contains(column)) styles[column] = (string)cell.Attribute("s"); }
             // A blank template avoids leftover data when a subsequent export has fewer rows.
             foreach (var row in data.Elements(S + "row").Where(r => (int?)r.Attribute("r") >= start))
                 foreach (var cell in row.Elements(S + "c"))
-                    if (Address((string)cell.Attribute("r")).Item1 <= columnCount &&
+                    if (outputColumns.Contains(Address((string)cell.Attribute("r")).Item1) &&
                         (cell.Element(S + "v") != null || cell.Element(S + "f") != null ||
                          cell.Descendants(S + "t").Any(t => !string.IsNullOrEmpty(t.Value))))
                         throw new InvalidOperationException("Template A:" + lastColumn + " from data row onward must be empty (styles are allowed). Move totals/formulas outside this area or use another sheet.");
@@ -277,13 +310,14 @@ namespace MEP_Export_BOM_From_View_ver1
                 if (!rowsByNumber.TryGetValue(start - 1, out header))
                 { header = new XElement(S + "row", new XAttribute("r", start - 1)); data.Add(header); }
                 var oldStyles = header.Elements(S + "c").ToDictionary(c => Address((string)c.Attribute("r")).Item1, c => (string)c.Attribute("s"));
-                header.Elements(S + "c").Where(c => Address((string)c.Attribute("r")).Item1 <= Math.Max(columnCount, BomLayout.Defaults().Count)).Remove();
-                int col = 1;
+                header.Elements(S + "c").Where(c => mapped ? outputColumns.Contains(Address((string)c.Attribute("r")).Item1) : Address((string)c.Attribute("r")).Item1 <= Math.Max(columnCount, BomLayout.Defaults().Count)).Remove();
+                int columnIndex = 0;
                 foreach (var item in result.Layout.Columns.Where(c => c.IsVisible))
                 {
+                    int col = targetColumns[columnIndex++];
                     var cell = Cell(Column(col) + (start - 1), item.Header, 0); string style;
                     if (oldStyles.TryGetValue(col, out style) && style != null) cell.SetAttributeValue("s", style); else cell.Attribute("s")?.Remove();
-                    header.Add(cell); col++;
+                    header.Add(cell);
                 }
                 var sorted = header.Elements(S + "c").OrderBy(c => Address((string)c.Attribute("r")).Item1).ToList();
                 sorted.Remove(); header.Add(sorted); header.Attribute("spans")?.Remove();
@@ -294,13 +328,13 @@ namespace MEP_Export_BOM_From_View_ver1
                 XElement row;
                 rowsByNumber.TryGetValue(rowNumber, out row);
                 if (row == null) { row = new XElement(S + "row", new XAttribute("r", rowNumber), rowAttributes.Select(a => new XAttribute(a))); data.Add(row); }
-                row.Elements(S + "c").Where(c => Address((string)c.Attribute("r")).Item1 <= columnCount).Remove();
+                row.Elements(S + "c").Where(c => outputColumns.Contains(Address((string)c.Attribute("r")).Item1)).Remove();
                 object[] values = result.Layout.Values(bom);
                 for (int i = 0; i < values.Length; i++)
                 {
-                    var cell = Cell(Column(i + 1) + rowNumber, values[i], 0);
+                    var cell = Cell(Column(targetColumns[i]) + rowNumber, values[i], 0);
                     string style;
-                    if (styles.TryGetValue(i + 1, out style) && style != null) cell.SetAttributeValue("s", style);
+                    if (styles.TryGetValue(targetColumns[i], out style) && style != null) cell.SetAttributeValue("s", style);
                     else cell.Attribute("s").Remove();
                     row.Add(cell);
                 }
@@ -309,12 +343,20 @@ namespace MEP_Export_BOM_From_View_ver1
                 row.Attribute("spans")?.Remove();
                 rowNumber++;
             }
+            if (result.TemplateTotalRow > 0) {
+                XElement total;
+                if (!rowsByNumber.TryGetValue(result.TemplateTotalRow, out total)) { total = new XElement(S + "row", new XAttribute("r", result.TemplateTotalRow)); data.Add(total); }
+                total.Elements(S + "c").Where(c => outputColumns.Contains(Address((string)c.Attribute("r")).Item1)).Remove();
+                var summary = new BomRow { Category = "Grand total", Quantity = actualRows.Sum(r => r.Quantity), ElementCount = actualRows.Sum(r => r.ElementCount), Unit = actualRows.FirstOrDefault()?.Unit, ExtraValues = new Dictionary<string, string> { { "__decoration", "total" } } };
+                var values = result.Layout.Values(summary); for (int i = 0; i < values.Length; i++) total.Add(Cell(Column(targetColumns[i]) + result.TemplateTotalRow, values[i], 0));
+                var orderedCells = total.Elements(S + "c").OrderBy(c => Address((string)c.Attribute("r")).Item1).ToList(); orderedCells.Remove(); total.Add(orderedCells);
+            }
             var orderedRows = data.Elements(S + "row").OrderBy(r => (int)r.Attribute("r")).ToList();
             orderedRows.Remove(); data.Add(orderedRows);
             // Let Excel calculate used range; keep all existing formatting and print settings.
             document.Root.Element(S + "dimension")?.Remove();
             var autoFilter = document.Root.Element(S + "autoFilter");
-            if (autoFilter != null && start > 1) autoFilter.SetAttributeValue("ref", "A" + (start - 1) + ":" + lastColumn + end);
+            if (autoFilter != null && start > 1 && !mapped) autoFilter.SetAttributeValue("ref", "A" + (start - 1) + ":" + lastColumn + end);
             // Audit/notes sheets cannot assume the template's style index definitions.
             Write(archive, path, document);
             var calc = workbook.Root.Element(S + "calcPr");

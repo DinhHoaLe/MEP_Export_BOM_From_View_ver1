@@ -62,12 +62,18 @@
     <Reference Include="System.Net.Http"/>
     
     <Reference Include="System.Xml"/>
+    <Reference Include="System.Runtime.Serialization"/>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Class1.cs" />
     <Compile Include="Models.cs" />
+    <Compile Include="PreviewSettings.cs" />
+    <Compile Include="StudioState.cs" />
+    <Compile Include="ScopeScheduleMarker.cs" />
     <Compile Include="BomColumns.cs" />
     <Compile Include="UI\ConfigurationDialogs.cs" />
+    <Compile Include="UI\StudioDialogs.cs" />
+    <Compile Include="UI\StudioTools.cs" />
     <Compile Include="BomService.cs" />
     <Compile Include="RevitScheduleService.cs" />
     <Compile Include="BomAggregator.cs" />
