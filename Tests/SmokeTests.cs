@@ -262,6 +262,15 @@ internal static class SmokeTests
             Check(compact.Columns.Single(c => c.Key == "Unit").CanHide && compact.Columns.Single(c => c.Key == "Quantity").IsRequired, "Required Unit/Quantity must be hideable, not removable.");
             var quantityColumn = compact.Columns.Single(c => c.Key == "Quantity"); quantityColumn.IsVisible = true; compact.Validate();
             Check(compact.Values(new BomRow { Quantity = 12.5 }).Contains(12.5), "Showing hidden quantity must retain its numeric value.");
+            var selectedSchedules = new[] { new ScheduleRequest { CategoryName = "Pipes", ScheduleName = "New pipes", IsSelected = true }, new ScheduleRequest { CategoryName = "Ducts", ScheduleName = "Existing", IsSelected = false } };
+            ScheduleNames.Validate(selectedSchedules, new[] { "Existing" }); Check(true, "Unchecked schedules must not block creation with duplicate names.");
+            selectedSchedules[0].IsSelected = false; ExpectFailure(() => ScheduleNames.Validate(selectedSchedules, new string[0]), "Creating zero selected schedules must fail.");
+            var mappedSheet = ImportSelection.ReadCsv("Code,Diameter,Unknown\n001,50 mm,ignored");
+            var mappings = ImportSelection.Mappings(mappedSheet, 1, importFields, 0, ImportSelection.Resolve("Mark", importFields));
+            Check(mappings.Count == 2 && mappings[0].FieldKey == "param:mark" && mappings[1].ParameterName == "Diameter", "Import must map the chosen key and other same-named parameters.");
+            var importedRows = ImportSelection.ElementRows(selectionRecords, mappings);
+            Check(importedRows[0].Values["param:mark"] == "001" && importedRows[0].Values["param:diameter"] == "50 mm", "Imported element list must show actual parameter values, preserving text IDs.");
+            Check(importedRows[1].Values.ContainsKey("param:mark") && importedRows[1].Values["param:mark"] == "", "Missing parameters must show blank without broken bindings.");
             Console.WriteLine("PASS: " + checks + " checks (BOM/Excel, import, schedule configuration and compact visibility).");
             Console.WriteLine("Fixtures: " + folder);
             return 0;

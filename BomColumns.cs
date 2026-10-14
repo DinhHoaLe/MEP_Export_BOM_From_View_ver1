@@ -90,7 +90,7 @@ namespace MEP_Export_BOM_From_View_ver1
         public static void Validate(IEnumerable<ScheduleRequest> requests, IEnumerable<string> existingNames)
         {
             var used = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
-            var items = requests.Where(r => r.Supported).ToList();
+            var items = requests.Where(r => r.Supported && r.IsSelected).ToList();
             if (items.Count == 0) throw new InvalidOperationException("No selected category supports a regular schedule.");
             foreach (var item in items)
             {

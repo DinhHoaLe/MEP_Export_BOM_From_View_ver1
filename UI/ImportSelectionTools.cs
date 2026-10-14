@@ -14,6 +14,7 @@ namespace MEP_Export_BOM_From_View_ver1
         private HashSet<string> importedSelection;
         private HashSet<int> categoriesBeforeImport;
         private string importDescription;
+        private List<ImportMapping> importMappings = new List<ImportMapping>();
 
         private void ImportElements()
         {
@@ -40,6 +41,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 {
                     if (categoriesBeforeImport == null) categoriesBeforeImport = new HashSet<int>(categoryOptions.Where(c => c.IsSelected).Select(c => c.Id));
                     importedSelection = new HashSet<string>(selection.Identities);
+                    importMappings = selection.Mappings;
                     importDescription = System.IO.Path.GetFileName(file.FileName) + " / " + description;
                     var matchedCategories = new HashSet<int>(scopeResult.Elements.Where(e => importedSelection.Contains(e.Identity)).Select(e => e.CategoryId));
                     updating = true;
@@ -47,6 +49,7 @@ namespace MEP_Export_BOM_From_View_ver1
                     finally { updating = false; }
                     Find<TextBlock>("ImportStatusText").Text = importDescription + "\n" + importedSelection.Count + " matched elements / " + selection.Rows.Count(r => r.Matches == 0) + " unmatched rows.";
                     Find<Button>("ClearImportButton").IsEnabled = true;
+                    Find<Expander>("ExcelOptionsExpander").IsExpanded = false;
                     RebuildPreview();
                 }).ShowDialog();
             }
@@ -63,6 +66,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 finally { updating = false; }
             }
             importedSelection = null; categoriesBeforeImport = null; importDescription = null;
+            importMappings.Clear(); UpdateImportedElements();
             Find<TextBlock>("ImportStatusText").Text = "No import filter applied. Import values match within the current scope.";
             Find<Button>("ClearImportButton").IsEnabled = false;
             if (restoreCategories && scopeResult != null) RebuildPreview();
@@ -81,12 +85,36 @@ namespace MEP_Export_BOM_From_View_ver1
             Find<Button>("ModifyTitleButton").Content = tab == 1 ? "Modify Schedule Title" : "Modify BOM Title";
             Find<Button>("ModifyTitleButton").Visibility = tab < 2 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             Find<Button>("CreateScheduleButton").Visibility = tab == 1 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-            Find<Button>("CreateScheduleButton").IsEnabled = tab == 1 && nativeReady;
+            Find<Button>("CreateScheduleButton").IsEnabled = tab == 1 && scopeResult != null && categoryOptions.Any(c => c.IsAvailable);
             Find<Button>("ExportSchedulesButton").Visibility = tab == 1 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             Find<Button>("ExportButton").Visibility = tab != 1 ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
             Find<Button>("ImportSelectionButton").IsEnabled = scopeResult != null;
             Find<Button>("TemplateMappingButton").IsEnabled = result != null;
             Find<Button>("HighlightButton").IsEnabled = result != null && result.Elements.Count > 0 && tab == 0;
+        }
+
+        private void UpdateImportedElements()
+        {
+            var table = Find<DataGrid>("ImportedElementsGrid"); table.Columns.Clear();
+            if (importedSelection == null)
+            {
+                table.ItemsSource = null;
+                table.Visibility = System.Windows.Visibility.Collapsed;
+                Find<TextBlock>("ImportedElementsCount").Text = "Import Excel / CSV to see matched elements and their parameter values.";
+                return;
+            }
+            table.Visibility = System.Windows.Visibility.Visible;
+            foreach (var field in new[] { "ElementId", "Source", "Category", "Family", "Type" }) { var mapping = importMappings.FirstOrDefault(m => m.FieldKey == field); table.Columns.Add(new DataGridTextColumn { Header = mapping != null && !string.Equals(mapping.FileHeading, mapping.ParameterName, StringComparison.OrdinalIgnoreCase) ? mapping.FileHeading + " → " + mapping.ParameterName : field == "ElementId" ? "Element ID" : field, Binding = new System.Windows.Data.Binding(field), Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = 60, ElementStyle = window.FindResource("TableText") as Style }); }
+            foreach (var mapping in importMappings.Where(m => !new[] { "ElementId", "Source", "Category", "Family", "Type" }.Contains(m.FieldKey))) {
+                table.Columns.Add(new DataGridTextColumn { Header = mapping.FileHeading + " → " + mapping.ParameterName, Binding = new System.Windows.Data.Binding("Values[" + mapping.FieldKey + "]"), Width = new DataGridLength(1, DataGridLengthUnitType.Star), MinWidth = 60, ElementStyle = window.FindResource("TableText") as Style });
+            }
+            table.ItemsSource = ImportSelection.ElementRows(result?.Elements ?? new List<ElementRecord>(), importMappings);
+            Find<TextBlock>("ImportedElementsCount").Text = (result?.Elements.Count ?? 0) + " elements · actual element parameter values · double-click for Properties";
+        }
+        private void ShowImportedProperties()
+        {
+            var row = Find<DataGrid>("ImportedElementsGrid").SelectedItem as ImportedElementRow;
+            if (row != null) RunInRevit(() => ConfigurationDialogs.BuildPropertiesWindow(window, new[] { row.Record }, record => BomService.GetProperties(document, record)).ShowDialog());
         }
     }
 }

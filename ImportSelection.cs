@@ -32,6 +32,7 @@ namespace MEP_Export_BOM_From_View_ver1
     }
     public sealed class ImportMatchResult
     {
+        public List<ImportMapping> Mappings { get; set; } = new List<ImportMapping>();
         public HashSet<string> Identities { get; set; } = new HashSet<string>();
         public List<ImportRowMatch> Rows { get; set; } = new List<ImportRowMatch>();
     }
@@ -203,6 +204,19 @@ namespace MEP_Export_BOM_From_View_ver1
             }
             if (result.Rows.Count == 0) throw new InvalidOperationException("The key column has no nonblank data below the header.");
             return result;
+        }
+
+        public static string ElementValue(ElementRecord record, string key) { return Value(record, key); }
+        public static List<ImportMapping> Mappings(ImportSheet sheet, int headerRow, IList<ImportField> fields, int keyColumn, ImportField target)
+        {
+            var header = sheet.Rows.First(r => r.Number == headerRow);
+            return header.Cells.Select((heading, i) => new { Heading = heading, Field = i == keyColumn ? target : Resolve(heading, fields) }).Where(item => item.Field != null)
+                .Select(item => new ImportMapping { FileHeading = item.Heading, FieldKey = item.Field.Key, ParameterName = item.Field.Name }).ToList();
+        }
+        public static List<ImportedElementRow> ElementRows(IEnumerable<ElementRecord> records, IEnumerable<ImportMapping> mappings)
+        {
+            var keys = mappings.Select(m => m.FieldKey).Distinct().ToList();
+            return records.Select(record => new ImportedElementRow { Record = record, Values = keys.ToDictionary(key => key, key => Value(record, key)) }).ToList();
         }
 
         private static string Value(ElementRecord record, string key)

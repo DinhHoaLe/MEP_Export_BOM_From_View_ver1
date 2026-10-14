@@ -12,7 +12,7 @@ namespace MEP_Export_BOM_From_View_ver1
         internal static Window BuildImportWindow(Window owner, IList<ImportSheet> sheets, IList<ImportField> fields,
             IList<ElementRecord> elements, Action<ImportMatchResult, string> accepted)
         {
-            var dialog = Base(owner, "Import Excel / CSV element selection", 1000, 680);
+            var dialog = Base(owner, "Import Excel / CSV element selection", 1340, 720);
             var layout = Rows(dialog, "Match elements using one key column", "Choose a worksheet, header row, source key column and target parameter/title. Match searches the current scope; values are read only. Text matching ignores case and outer spaces. Numeric values without units use the parameter's displayed units.");
             var body = new System.Windows.Controls.Grid();
             body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition());
@@ -70,6 +70,7 @@ namespace MEP_Export_BOM_From_View_ver1
                     var column = source.SelectedItem as ImportColumn; var field = target.SelectedItem as ImportField;
                     if (column == null) throw new InvalidOperationException("Choose a source key column.");
                     preview = ImportSelection.Match((ImportSheet)worksheet.SelectedItem, row, column.Index, field, elements);
+                    preview.Mappings = ImportSelection.Mappings((ImportSheet)worksheet.SelectedItem, row, fields, column.Index, field);
                     table.ItemsSource = preview.Rows;
                     summary.Text = preview.Identities.Count + " elements · " + preview.Rows.Count(r => r.Matches == 0) + " unmatched rows";
                     label = ((ImportSheet)worksheet.SelectedItem).Name + " / " + column.Heading + " → " + field.Name;

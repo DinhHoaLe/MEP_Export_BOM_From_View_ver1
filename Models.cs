@@ -12,6 +12,22 @@ namespace MEP_Export_BOM_From_View_ver1
         public string Value { get; set; }
         public string Access { get; set; }
     }
+    public sealed class ImportMapping
+    {
+        public string FileHeading { get; set; }
+        public string FieldKey { get; set; }
+        public string ParameterName { get; set; }
+    }
+    public sealed class ImportedElementRow
+    {
+        public ElementRecord Record { get; set; }
+        public int ElementId { get { return Record.ElementId; } }
+        public string Source { get { return Record.SourceName; } }
+        public string Category { get { return Record.Category; } }
+        public string Family { get { return Record.Family; } }
+        public string Type { get { return Record.Type; } }
+        public Dictionary<string, string> Values { get; set; } = new Dictionary<string, string>();
+    }
 
     public sealed class CategoryOption : INotifyPropertyChanged
     {

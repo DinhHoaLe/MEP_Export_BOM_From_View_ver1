@@ -126,14 +126,16 @@ namespace MEP_Export_BOM_From_View_ver1
             export.Click += (s, e) => { grid.CommitEdit(DataGridEditingUnit.Cell, true); grid.CommitEdit(DataGridEditingUnit.Row, true); if (requests.Any(r => r.IsSelected)) dialog.DialogResult = true; else MessageBox.Show(dialog, "Select at least one schedule."); };
             return dialog;
         }
-        internal static Window BuildNamesWindow(Window owner, IList<ScheduleRequest> requests, IEnumerable<string> existingNames)
+        internal static Window BuildNamesWindow(Window owner, IList<ScheduleRequest> requests, IEnumerable<string> existingNames, bool matchScope = false)
         {
-            var dialog = Base(owner, "Create Revit Schedules", 900, 560);
-            var layout = Rows(dialog, "Name each category schedule", requests.Any(r => r.Options?.ScopeElementIds != null) ?
+            var dialog = Base(owner, "Create Revit Schedules", 1100, 600);
+            var layout = Rows(dialog, "Name each category schedule", matchScope || requests.Any(r => r.Options?.ScopeElementIds != null) ?
                 "Creates scoped host schedules and stores a read-only MEP BOM Scope Membership parameter on their elements (hidden column in schedules). Linked documents are not modified. The entire batch is one Revit Undo operation." :
                 "Creates one schedule per category using configured fields, filters and sorting/grouping. Scope: entire host model.");
             var grid = Grid(false);
             grid.ItemsSource = requests;
+            var selectStyle = new Style(typeof(CheckBox)); selectStyle.Setters.Add(new Setter(UIElement.IsEnabledProperty, new Binding("Supported")));
+            grid.Columns.Add(new DataGridCheckBoxColumn { Header = "Selection", Binding = new Binding("IsSelected") { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged }, ElementStyle = selectStyle, EditingElementStyle = selectStyle, Width = 85 });
             grid.Columns.Add(new DataGridTextColumn { Header = "Category", Binding = new Binding("CategoryName"), IsReadOnly = true, Width = 210 });
             var nameStyle = new Style(typeof(TextBox));
             nameStyle.Setters.Add(new Setter(UIElement.IsEnabledProperty, new Binding("Supported")));
@@ -148,12 +150,13 @@ namespace MEP_Export_BOM_From_View_ver1
                 try
                 {
                     grid.CommitEdit(DataGridEditingUnit.Cell, true); grid.CommitEdit(DataGridEditingUnit.Row, true);
-                    ScheduleNames.Validate(requests, existingNames);
+                    ScheduleNames.Validate(requests.Where(r => r.IsSelected), existingNames);
                     foreach (var item in requests) item.ScheduleName = (item.ScheduleName ?? "").Trim();
                     dialog.DialogResult = true;
                 }
                 catch (Exception ex) { MessageBox.Show(dialog, ex.Message, "Schedule names", MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
+            foreach (bool select in new[] { true, false }) { bool selected = select; var button = Button(dialog, select ? "All" : "None", false); button.Click += (s, e) => { grid.CommitEdit(); foreach (var item in requests) item.IsSelected = selected && item.Supported; grid.Items.Refresh(); }; actions.Children.Add(button); }
             actions.Children.Add(cancel); actions.Children.Add(create);
             return dialog;
         }

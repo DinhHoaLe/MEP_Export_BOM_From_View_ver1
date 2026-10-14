@@ -26,7 +26,7 @@ internal static class UiPreview
             var errors = new StringWriter();
             PresentationTraceSources.DataBindingSource.Listeners.Add(new TextWriterTraceListener(errors));
             PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Warning;
-            foreach (string state in new[] { "empty", "preview", "minimum", "schedule", "excel" })
+            foreach (string state in new[] { "empty", "preview", "minimum", "schedule", "excel", "absent" })
             {
                 Window window;
                 using (var stream = assembly.GetManifestResourceStream("BomWindow.xaml"))
@@ -57,7 +57,8 @@ internal static class UiPreview
                 };
                 if (state != "empty")
                 {
-                    Find<ListBox>(window, "CategoryList").ItemsSource = categories;
+                    Find<ListBox>(window, "CategoryList").ItemsSource = categories.Where(c => c.IsAvailable).ToList();
+                    Find<ListBox>(window, "AbsentCategoryList").ItemsSource = categories.Where(c => !c.IsAvailable).ToList();
                     Find<TextBlock>(window, "CategoryCountText").Text = "6 present / 6 selected";
                     Find<TextBlock>(window, "EmptyCategories").Visibility = Visibility.Collapsed;
                 }
@@ -99,6 +100,16 @@ internal static class UiPreview
                 Find<Button>(window, "ExportSchedulesButton").Visibility = scheduleTab ? Visibility.Visible : Visibility.Collapsed;
                 Find<Button>(window, "ExportButton").Visibility = scheduleTab ? Visibility.Collapsed : Visibility.Visible;
                 if (excelTab) tabs.SelectedIndex = 2;
+                if (state == "absent") { Find<TabControl>(window, "CategoryPresenceTabs").SelectedIndex = 1; foreach (string name in new[] { "MepButton", "AllButton", "NoneButton" }) Find<Button>(window, name).IsEnabled = false; }
+                if (excelTab) {
+                    Find<Expander>(window, "ExcelOptionsExpander").IsExpanded = false;
+                    var list = Find<DataGrid>(window, "ImportedElementsGrid");
+                    foreach (string field in new[] { "ElementId", "Source", "Family", "Type" }) list.Columns.Add(new DataGridTextColumn { Header = field, Binding = new Binding(field), Width = 150 });
+                    list.Columns.Add(new DataGridTextColumn { Header = "Mark", Binding = new Binding("Values[param:mark]"), Width = 150 });
+                    var sample = new ElementRecord { ElementId = 12345, SourceName = "Host", Family = "Pipe Types", Type = "CHW - Steel" }; sample.ExtraValues["param:mark"] = "P-001";
+                    list.ItemsSource = ImportSelection.ElementRows(new[] { sample }, new[] { new ImportMapping { FileHeading = "Mark", FieldKey = "param:mark", ParameterName = "Mark" } });
+                    Find<TextBlock>(window, "ImportedElementsCount").Text = "1 matched element · actual parameter values · Mark mapped from Excel";
+                }
                 if (state == "schedule")
                 {
                     tabs.SelectedIndex = 1;
@@ -106,27 +117,29 @@ internal static class UiPreview
                     Find<ComboBox>(window, "ScheduleCategoryCombo").SelectedIndex = 0;
                     Find<TextBlock>(window, "SchedulePreviewStatus").Text = "BOM - Pipes · Entire host model · Native Revit fields, units and totals · Read-only preview";
                     var scheduleGrid = Find<DataGrid>(window, "ScheduleGrid");
-                    var headings = new[] { "Family and Type", "System Name", "Size", "Length", "Count" };
-                    for (int col = 0; col < 5; col++) scheduleGrid.Columns.Add(new DataGridTextColumn { Header = headings[col], Binding = new Binding("[" + col + "]"), Width = col == 0 ? 240 : 130, MinWidth = 110 });
+                    var headings = new[] { "Category", "Family", "Type", "Count" };
+                    for (int col = 0; col < 4; col++) scheduleGrid.Columns.Add(new DataGridTextColumn { Header = headings[col], Binding = new Binding("[" + col + "]"), Width = col == 3 ? 100 : 220, MinWidth = 80 });
                     scheduleGrid.ItemsSource = new[] {
-                        new[] { "Pipe Types: CHW - Steel", "CHWS", "50 mm", "48.235 m", "1" },
-                        new[] { "Pipe Types: CHW - Steel", "CHWS", "50 mm", "12.500 m", "1" },
-                        new[] { "Grand total: 2", "", "", "60.735 m", "2" }
+                        new[] { "Pipes", "Pipe Types", "CHW - Steel", "12" },
+                        new[] { "Pipes", "Pipe Types", "HWS - Copper", "8" }
                     };
+                    Find<Border>(window, "ScheduleTotalPanel").Visibility = Visibility.Visible; Find<TextBlock>(window, "ScheduleTotalText").Text = "Grand total · Count: 20";
                 }
                 var content = (FrameworkElement)window.Content;
-                double width = state == "minimum" ? 1060 : 1220;
+                double width = state == "minimum" ? 1180 : 1480;
                 double height = state == "minimum" ? 820 : 860;
                 content.Measure(new Size(width, height)); content.Arrange(new Rect(0, 0, width, height)); content.UpdateLayout();
                 var render = new RenderTargetBitmap((int)width, (int)height, 96, 96, PixelFormats.Pbgra32); render.Render(content);
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(render));
                 using (var output = File.Create(Path.Combine(folder, state + ".png"))) encoder.Save(output);
                 var check = Find<ListBox>(window, "CategoryList");
-                int expected = state == "empty" ? 0 : 7;
-                if (check.Items.Count != expected || check.ActualHeight < 80 || (!scheduleTab && Find<Button>(window, "ExportButton").ActualWidth < 100))
+                int expected = state == "empty" ? 0 : 6;
+                if (check.Items.Count != expected || (state != "absent" && check.ActualHeight < 80) || (!scheduleTab && Find<Button>(window, "ExportButton").ActualWidth < 100))
                     throw new Exception("Layout is clipped: " + state);
                 if (state == "empty" && (Find<ComboBox>(window, "ScopeCombo").SelectedIndex != -1 || Find<ComboBox>(window, "TargetCombo").Items.Count != 0 || Find<Button>(window, "CreateScheduleButton").IsEnabled))
                     throw new Exception("Initial state contains preloaded selections.");
+                if (state == "absent") { var list = Find<ListBox>(window, "AbsentCategoryList"); var item = list.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem; var checkbox = item == null ? null : Descendant<CheckBox>(item); if (list.Items.Count != 1 || checkbox == null || checkbox.IsEnabled) throw new Exception("Absent category must be visible and disabled in its own tab."); }
+                if (excelTab && (Find<DataGrid>(window, "ImportedElementsGrid").Items.Count != 1 || Find<DataGrid>(window, "ImportedElementsGrid").ActualHeight < 140)) throw new Exception("Imported element list is missing or too short.");
                 // Exercise two-way checkbox binding on the real template without a Revit document.
                 var container = check.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem;
                 if (container != null)
@@ -143,7 +156,8 @@ internal static class UiPreview
                         new ScheduleRequest { CategoryId = 2, CategoryName = "Ducts", ScheduleName = "BOM - Ducts" },
                         new ScheduleRequest { CategoryId = 3, CategoryName = "Cable Trays", ScheduleName = "BOM - Cable Trays" }
                     }, new string[0]);
-                    Capture(names, folder, "schedule-names", 900, 560); names.Close();
+                    var selectionGrid = Descendant<DataGrid>((DependencyObject)names.Content); if (selectionGrid == null || Convert.ToString(selectionGrid.Columns[0].Header) != "Selection") throw new Exception("Schedule creation needs the Selection column first.");
+                    Capture(names, folder, "schedule-names", 1100, 600); names.Close();
                     var titles = ConfigurationDialogs.BuildLayoutWindow(window, new BomLayout(), new List<ParameterField>
                     { new ParameterField { Key = "param:1", Name = "Comments" }, new ParameterField { Key = "param:2", Name = "Manufacturer" } }, accepted => { });
                     Capture(titles, folder, "modify-title", 1020, 680); titles.Close();
@@ -165,7 +179,7 @@ internal static class UiPreview
                     var importTable = Descendant<DataGrid>((DependencyObject)imported.Content);
                     if (importTable.Items.Count != 3 || !Descendants<Button>((DependencyObject)imported.Content).First(b => Convert.ToString(b.Content) == "Apply selection").IsEnabled)
                         throw new Exception("Import preview did not enable applying a validated match.");
-                    Capture(imported, folder, "import-selection", 1000, 680); imported.Close();
+                    Capture(imported, folder, "import-selection", 1340, 720); imported.Close();
                     var properties = ConfigurationDialogs.BuildPropertiesWindow(window, new[]
                     { new ElementRecord { ElementId = 12345, Family = "Pipe Types", Type = "CHW - Steel", SourceName = "Office Building - MEP" },
                       new ElementRecord { ElementId = 12346, Family = "Pipe Types", Type = "CHW - Steel", SourceName = "Office Building - MEP" } }, record => new List<ElementProperty>
@@ -180,13 +194,13 @@ internal static class UiPreview
                         new ElementProperty { Group = "Instance", Name = "Length", Value = "48.235 m", Access = "Read-only" },
                         new ElementProperty { Group = "Type", Name = "Material", Value = "Steel", Access = "Edit in Revit" }
                     });
-                    Capture(properties, folder, "element-properties", 980, 720); properties.Close();
+                    Capture(properties, folder, "element-properties", 1240, 720); properties.Close();
                     var ids = ConfigurationDialogs.BuildElementIdsWindow(window, new[] {
                         new ElementRecord { ElementId = 12345, SourceName = "Host · Office MEP", Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-host-12345" },
                         new ElementRecord { ElementId = 12346, SourceName = "Host · Office MEP", Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-host-12346" },
                         new ElementRecord { ElementId = 12345, SourceName = "Link · Tower MEP", LinkInstanceId = 901, Category = "Pipes", Type = "CHW - Steel", UniqueId = "sample-link-12345" }
                     }, record => { }, records => { });
-                    Capture(ids, folder, "element-id-list", 1040, 650); ids.Close();
+                    Capture(ids, folder, "element-id-list", 1360, 650); ids.Close();
                     var comparison = ConfigurationDialogs.BuildChanges(window, new List<BomChange> { new BomChange { Change = "Added", Source = "Host", Element = "123", Category = "Pipes", After = "CHW · 50 mm · 4 m", Unit = "m", Delta = 4 } }, () => { }); Capture(comparison, folder, "comparison", 1100, 680); comparison.Close();
                 }
                 window.Close();

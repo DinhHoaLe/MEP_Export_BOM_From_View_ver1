@@ -17,6 +17,7 @@ namespace MEP_Export_BOM_From_View_ver1
                     var schedule = Create(document, categoryId, categoryName, "BOM Preview " + Guid.NewGuid().ToString("N"), options);
                     using (var transaction = new Transaction(document, "Regenerate schedule preview"))
                     { transaction.Start(); document.Regenerate(); transaction.Commit(); }
+                    if (!schedule.RefreshData()) throw new InvalidOperationException("Revit could not refresh the schedule data. Retry Preview.");
                     var body = schedule.GetTableData().GetSectionData(SectionType.Body);
                     var table = new System.Data.DataTable();
                     for (int col = 0; col < body.NumberOfColumns; col++) table.Columns.Add("Column" + col);
@@ -27,6 +28,10 @@ namespace MEP_Export_BOM_From_View_ver1
                             values[col] = schedule.GetCellText(SectionType.Body, row, body.FirstColumnNumber + col);
                         table.Rows.Add(values);
                     }
+                    if (schedule.Definition.ShowGrandTotal && table.Rows.Count > 0) {
+                        table.ExtendedProperties["GrandTotalRowIndex"] = table.Rows.Count - 1;
+                        table.ExtendedProperties["GrandTotalValues"] = table.Rows[table.Rows.Count - 1].ItemArray;
+                    }
                     return table;
                 }
                 finally { group.RollBack(); }
@@ -34,7 +39,10 @@ namespace MEP_Export_BOM_From_View_ver1
         }
 
         private static string Key(SchedulableField field) { return field.ParameterId.IntegerValue + ":" + field.FieldType; }
-        private static string Key(ScheduleField field) { return field.ParameterId.IntegerValue + ":" + field.FieldType; }
+        private static string Key(ScheduleField field, Document document) {
+            var parameter = document.GetElement(field.ParameterId) as SharedParameterElement;
+            return parameter?.GuidValue == ScopeScheduleMarker.CategoryGuid ? "virtual:category" : parameter?.GuidValue == ScopeScheduleMarker.FamilyGuid ? "virtual:family" : parameter?.GuidValue == ScopeScheduleMarker.TypeGuid ? "virtual:type" : field.ParameterId.IntegerValue + ":" + field.FieldType;
+        }
 
         public static NativeScheduleOptions GetOptions(Document document, int categoryId, string categoryName)
         {
@@ -46,11 +54,14 @@ namespace MEP_Export_BOM_From_View_ver1
                     var schedule = Create(document, categoryId, categoryName, "BOM Fields " + Guid.NewGuid().ToString("N"));
                     var options = new NativeScheduleOptions { Title = "BOM - " + categoryName + " - Entire Model" };
                     var marker = SharedParameterElement.Lookup(document, ScopeScheduleMarker.MarkerGuid);
-                    foreach (var field in schedule.Definition.GetSchedulableFields()) if (marker == null || field.ParameterId != marker.Id) options.Available.Add(new NativeField { Key = Key(field), Name = field.GetName(document), Heading = field.GetName(document) });
+                    var categoryLabel = SharedParameterElement.Lookup(document, ScopeScheduleMarker.CategoryGuid);
+                    var familyLabel = SharedParameterElement.Lookup(document, ScopeScheduleMarker.FamilyGuid); var typeLabel = SharedParameterElement.Lookup(document, ScopeScheduleMarker.TypeGuid);
+                    foreach (var field in schedule.Definition.GetSchedulableFields()) if ((marker == null || field.ParameterId != marker.Id) && (categoryLabel == null || field.ParameterId != categoryLabel.Id) && (familyLabel == null || field.ParameterId != familyLabel.Id) && (typeLabel == null || field.ParameterId != typeLabel.Id)) options.Available.Add(new NativeField { Key = Key(field), Name = field.GetName(document), Heading = field.GetName(document) });
                     foreach (var id in schedule.Definition.GetFieldOrder())
                     {
                         var field = schedule.Definition.GetField(id);
-                        options.Fields.Add(new NativeField { Key = Key(field), Name = field.GetName(), Heading = field.ColumnHeading, Visible = !field.IsHidden,
+                        var key = Key(field, document);
+                        options.Fields.Add(new NativeField { Key = key, Name = key.StartsWith("virtual:") ? field.ColumnHeading : field.GetName(), Heading = field.ColumnHeading, Visible = !field.IsHidden,
                             CanTotal = field.CanTotal(), Total = field.CanTotal() && field.DisplayType == ScheduleFieldDisplayType.Totals });
                     }
                     foreach (var available in options.Available)
@@ -59,17 +70,18 @@ namespace MEP_Export_BOM_From_View_ver1
                         if (selected != null) available.CanTotal = selected.CanTotal;
                     }
                     foreach (var selected in options.Fields.Where(f => options.Available.All(a => a.Key != f.Key))) options.Available.Add(selected.Clone());
-                    if (options.Fields.Count > 0) options.Settings.Sorts.Add(new PreviewSort { Field = options.Fields[0].Key });
+                    options.Settings.Itemized = false;
+                    foreach (var field in options.Fields.Where(f => f.Key == "virtual:family" || f.Key == "virtual:type" || f.Key.StartsWith(((int)BuiltInParameter.ELEM_FAMILY_PARAM) + ":") || f.Key.StartsWith(((int)BuiltInParameter.ELEM_TYPE_PARAM) + ":"))) options.Settings.Sorts.Add(new PreviewSort { Field = field.Key });
                     return options;
                 }
                 finally { group.RollBack(); }
             }
         }
 
-        // Native schedules use category/model scope, not the arbitrary ID set from a view crop.
+        // Creation uses the same frozen fields and optional scope membership as preview.
         public static IList<ViewSchedule> CreateBatch(Document document, IList<ScheduleRequest> requests)
         {
-            var supported = requests.Where(r => r.Supported).ToList();
+            var supported = requests.Where(r => r.Supported && r.IsSelected).ToList();
             ScheduleNames.Validate(supported, new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>().Select(v => v.Name));
             var schedules = new List<ViewSchedule>();
             using (var group = new TransactionGroup(document, "Create BOM category schedules"))
@@ -94,36 +106,23 @@ namespace MEP_Export_BOM_From_View_ver1
                 var definition = schedule.Definition;
                 var available = definition.GetSchedulableFields();
                 var added = new HashSet<int>();
-                ScheduleField first = AddField(definition, available, added, BuiltInParameter.ELEM_FAMILY_AND_TYPE_PARAM);
-                if (first == null)
-                {
-                    first = AddField(definition, available, added, BuiltInParameter.ELEM_FAMILY_PARAM);
-                    var type = AddField(definition, available, added, BuiltInParameter.ELEM_TYPE_PARAM);
-                    if (first == null) first = type;
-                }
-                AddField(definition, available, added, BuiltInParameter.RBS_SYSTEM_NAME_PARAM);
-                var size = AddField(definition, available, added, BuiltInParameter.RBS_CALCULATED_SIZE) ??
-                    AddField(definition, available, added, BuiltInParameter.RBS_PIPE_SIZE_FORMATTED_PARAM);
-                foreach (var parameter in new[] { BuiltInParameter.RBS_PIPE_DIAMETER_PARAM, BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM,
-                    BuiltInParameter.RBS_CURVE_DIAMETER_PARAM, BuiltInParameter.RBS_CURVE_WIDTH_PARAM, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM,
-                    BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM, BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM })
-                {
-                    if (size != null) break;
-                    var dimension = AddField(definition, available, added, parameter);
-                    if (dimension != null) dimension.SetFormatOptions(new FormatOptions(UnitTypeId.Millimeters) { UseDefault = false, Accuracy = 0.1 });
-                }
-                var length = AddField(definition, available, added, BuiltInParameter.CURVE_ELEM_LENGTH);
-                if (length != null)
-                {
-                    length.SetFormatOptions(new FormatOptions(UnitTypeId.Meters) { UseDefault = false, Accuracy = 0.001 });
-                    if (length.CanTotal()) length.DisplayType = ScheduleFieldDisplayType.Totals;
-                }
-                definition.AddField(ScheduleFieldType.Count);
-                definition.IsItemized = true;
+                if (options == null) {
+                var categoryField = AddField(definition, available, added, BuiltInParameter.ELEM_CATEGORY_PARAM) ?? AddField(definition, available, added, BuiltInParameter.ELEM_CATEGORY_PARAM_MT);
+                if (categoryField == null) categoryField = ScopeScheduleMarker.CategoryField(document, schedule, categoryName);
+                categoryField.ColumnHeading = "Category";
+                var family = AddField(definition, available, added, BuiltInParameter.ELEM_FAMILY_PARAM);
+                var type = AddField(definition, available, added, BuiltInParameter.ELEM_TYPE_PARAM);
+                if (family == null) family = ScopeScheduleMarker.FamilyField(document, schedule);
+                if (type == null) type = ScopeScheduleMarker.TypeField(document, schedule);
+                family.ColumnHeading = "Family"; type.ColumnHeading = "Type";
+                var count = definition.AddField(ScheduleFieldType.Count); count.ColumnHeading = "Count"; if (count.CanTotal()) count.DisplayType = ScheduleFieldDisplayType.Totals;
+                definition.IsItemized = false;
                 definition.ShowTitle = true; definition.ShowHeaders = true;
                 definition.ShowGrandTotal = true; definition.ShowGrandTotalCount = true; definition.ShowGrandTotalTitle = true;
-                if (first != null) definition.AddSortGroupField(new ScheduleSortGroupField(first.FieldId));
-                if (options != null) Configure(document, definition, options);
+                definition.AddSortGroupField(new ScheduleSortGroupField(family.FieldId)); definition.AddSortGroupField(new ScheduleSortGroupField(type.FieldId));
+                }
+                definition.ShowTitle = true; definition.ShowHeaders = true;
+                if (options != null) Configure(document, schedule, options, categoryName);
                 if (options?.ScopeElementIds != null) ScopeScheduleMarker.Apply(document, schedule, options.ScopeElementIds);
                 if (transaction.Commit() != TransactionStatus.Committed)
                     throw new InvalidOperationException("Revit did not commit the schedule creation.");
@@ -131,8 +130,9 @@ namespace MEP_Export_BOM_From_View_ver1
             }
         }
 
-        private static void Configure(Document document, ScheduleDefinition definition, NativeScheduleOptions options)
+        private static void Configure(Document document, ViewSchedule schedule, NativeScheduleOptions options, string categoryName)
         {
+            var definition = schedule.Definition;
             options.Settings.Validate(options.Fields.Select(f => f.Key), true);
             if (options.Fields.Count == 0 || !options.Fields.Any(f => f.Visible)) throw new InvalidOperationException("Choose at least one visible schedule field.");
             definition.ClearSortGroupFields(); definition.ClearFilters(); definition.ClearFields();
@@ -141,7 +141,10 @@ namespace MEP_Export_BOM_From_View_ver1
             foreach (var item in options.Fields)
             {
                 ScheduleField field;
-                if (item.Key.EndsWith(":" + ScheduleFieldType.Count)) field = definition.AddField(ScheduleFieldType.Count);
+                if (item.Key == "virtual:category") field = ScopeScheduleMarker.CategoryField(document, schedule, categoryName);
+                else if (item.Key == "virtual:family") field = ScopeScheduleMarker.FamilyField(document, schedule);
+                else if (item.Key == "virtual:type") field = ScopeScheduleMarker.TypeField(document, schedule);
+                else if (item.Key.EndsWith(":" + ScheduleFieldType.Count)) field = definition.AddField(ScheduleFieldType.Count);
                 else
                 {
                     var match = available.FirstOrDefault(f => Key(f) == item.Key);
@@ -246,6 +249,12 @@ namespace MEP_Export_BOM_From_View_ver1
 
         public static IList<ParameterField> FilterValues(Document document, int categoryId, string fieldKey, IList<int> scopeIds)
         {
+            if (fieldKey == "virtual:category") { var name = Category.GetCategory(document, new ElementId(categoryId))?.Name ?? ""; return new List<ParameterField> { new ParameterField { Key = name, Name = name } }; }
+            if (fieldKey == "virtual:family" || fieldKey == "virtual:type") {
+                var virtualValues = new HashSet<string>(); var included = scopeIds == null ? null : new HashSet<int>(scopeIds);
+                using (var collector = new FilteredElementCollector(document)) foreach (var element in collector.OfCategoryId(new ElementId(categoryId)).WhereElementIsNotElementType()) { if (included != null && !included.Contains(element.Id.IntegerValue)) continue; var type = document.GetElement(element.GetTypeId()) as ElementType; virtualValues.Add(fieldKey == "virtual:family" ? type?.FamilyName ?? "" : type?.Name ?? ""); }
+                return virtualValues.OrderBy(value => value).Select(value => new ParameterField { Key = value, Name = value.Length == 0 ? "(empty)" : value }).ToList();
+            }
             int parameterId; if (!int.TryParse((fieldKey ?? "").Split(':')[0], out parameterId)) return new List<ParameterField>();
             var values = new Dictionary<string, string>(); var scoped = scopeIds == null ? null : new HashSet<int>(scopeIds);
             using (var collector = new FilteredElementCollector(document)) foreach (var element in collector.OfCategoryId(new ElementId(categoryId)).WhereElementIsNotElementType()) {

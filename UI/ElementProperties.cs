@@ -13,7 +13,7 @@ namespace MEP_Export_BOM_From_View_ver1
     {
         internal static Window BuildPropertiesWindow(Window owner, IList<ElementRecord> records, Func<ElementRecord, IList<ElementProperty>> read)
         {
-            var dialog = Base(owner, "Element Properties", 980, 720);
+            var dialog = Base(owner, "Element Properties", 1240, 720);
             var layout = Rows(dialog, "Element properties", "This BOM row contains " + records.Count + " instance(s). Choose an element to inspect its instance and type parameters. Values are read only.");
             var body = new System.Windows.Controls.Grid();
             body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition());

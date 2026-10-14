@@ -167,7 +167,7 @@ namespace MEP_Export_BOM_From_View_ver1
         {
             var document = RecordDocument(host, record);
             var element = document?.GetElement(new ElementId(record.ElementId));
-            if (element == null) throw new InvalidOperationException("Element is unavailable; refresh the BOM or reload the linked model.");
+            if (element == null || (record.UniqueId != null && record.UniqueId != element.UniqueId)) throw new InvalidOperationException("Element is unavailable; refresh the BOM or reload the linked model.");
             var properties = new List<ElementProperty>();
             Action<string, string, string> add = (group, name, value) => properties.Add(new ElementProperty { Group = group, Name = name, Value = value ?? "", Access = "Read-only" });
             add("Identity", "Source", record.SourceName); add("Identity", "Element ID", element.Id.IntegerValue.ToString());
@@ -248,7 +248,7 @@ namespace MEP_Export_BOM_From_View_ver1
                 try
                 {
                     if (parameter.Definition == null || parameter.StorageType == StorageType.None) continue;
-                    if (parameter.IsShared && parameter.GUID == ScopeScheduleMarker.MarkerGuid) continue;
+                    if (parameter.IsShared && (parameter.GUID == ScopeScheduleMarker.MarkerGuid || parameter.GUID == ScopeScheduleMarker.CategoryGuid || parameter.GUID == ScopeScheduleMarker.FamilyGuid || parameter.GUID == ScopeScheduleMarker.TypeGuid)) continue;
                     string key = ParameterKey(parameter, element.Document);
                     string value = parameter.HasValue ? Text(parameter) : "";
                     if (parameter.HasValue && parameter.StorageType == StorageType.ElementId)

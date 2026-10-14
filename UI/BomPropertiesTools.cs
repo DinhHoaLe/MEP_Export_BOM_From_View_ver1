@@ -19,8 +19,8 @@ namespace MEP_Export_BOM_From_View_ver1
             if (records.Count == 0) return;
             e.Handled = true;
             ConfigurationDialogs.BuildElementIdsWindow(window, records,
-                record => ConfigurationDialogs.BuildPropertiesWindow(window, new[] { record }, item => BomService.GetProperties(document, item)).ShowDialog(),
-                selected => { HighlightRequests = selected.ToList(); window.Close(); }).ShowDialog();
+                record => RunInRevit(() => ConfigurationDialogs.BuildPropertiesWindow(window, new[] { record }, item => BomService.GetProperties(document, item)).ShowDialog()),
+                selected => ViewInRevit(selected)).Show();
         }
 
         private void ShowBomProperties(MouseButtonEventArgs e)
@@ -39,7 +39,7 @@ namespace MEP_Export_BOM_From_View_ver1
             var records = result.Elements.Where(record => keys.Contains(record.Identity)).ToList();
             if (records.Count == 0) return;
             e.Handled = true;
-            ConfigurationDialogs.BuildPropertiesWindow(window, records, record => BomService.GetProperties(document, record)).ShowDialog();
+            RunInRevit(() => ConfigurationDialogs.BuildPropertiesWindow(window, records, record => BomService.GetProperties(document, record)).ShowDialog());
         }
     }
 }

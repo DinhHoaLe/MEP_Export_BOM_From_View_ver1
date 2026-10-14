@@ -34,7 +34,7 @@ namespace MEP_Export_BOM_From_View_ver1
         }
         private void AddTool(ContextMenu menu, string title, Action action, bool enabled = true)
         {
-            var item = new MenuItem { Header = title, IsEnabled = enabled }; item.Click += (s, e) => { try { action(); } catch (Exception ex) { MessageBox.Show(window, ex.Message, title); } }; menu.Items.Add(item);
+            var item = new MenuItem { Header = title, IsEnabled = enabled }; item.Click += (s, e) => RunInRevit(() => { try { action(); } catch (Exception ex) { MessageBox.Show(window, ex.Message, title); } }); menu.Items.Add(item);
         }
         private void SavePreset()
         {
@@ -100,7 +100,7 @@ namespace MEP_Export_BOM_From_View_ver1
             var selected = grid.SelectedItems.Cast<BomRow>().Where(r => !r.IsDecoration).ToList();
             var keys = new HashSet<string>(selected.SelectMany(r => r.RecordKeys));
             if (keys.Count == 0) { MessageBox.Show(window, "Select one or more BOM data rows first.", "Highlight elements"); return; }
-            HighlightRequests = result.Elements.Where(e => keys.Contains(e.Identity)).ToList(); window.Close();
+            ViewInRevit(result.Elements.Where(e => keys.Contains(e.Identity)).ToList());
         }
         private BomSnapshot Snapshot()
         {

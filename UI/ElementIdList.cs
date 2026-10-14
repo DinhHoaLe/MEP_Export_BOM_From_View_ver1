@@ -25,8 +25,8 @@ namespace MEP_Export_BOM_From_View_ver1
         internal static Window BuildElementIdsWindow(Window owner, IList<ElementRecord> records,
             Action<ElementRecord> properties, Action<IList<ElementRecord>> view)
         {
-            var dialog = Base(owner, "BOM Element IDs", 1040, 650);
-            var layout = Rows(dialog, "Element IDs · " + records.Count + " instance(s)", "Select one or more rows to copy IDs or inspect Properties. View in Revit closes this tool, then selects and zooms the chosen instances. Source distinguishes host and linked IDs.");
+            var dialog = Base(owner, "BOM Element IDs", 1360, 650);
+            var layout = Rows(dialog, "Element IDs · " + records.Count + " instance(s)", "View in Revit keeps both windows open and temporarily minimizes the tool so the model is visible. Restore it to continue. Source distinguishes host and linked IDs.");
             var table = Grid(true); table.SelectionMode = DataGridSelectionMode.Extended;
             table.ItemsSource = records.OrderBy(r => r.SourceName).ThenBy(r => r.ElementId).ToList();
             table.Columns.Add(new DataGridTextColumn { Header = "Element ID", Binding = new Binding("ElementId"), Width = 110 });
@@ -46,11 +46,11 @@ namespace MEP_Export_BOM_From_View_ver1
             var copySelected = Button(dialog, "Copy selected IDs", false); copySelected.Click += (s, e) => copy(table.SelectedItems.Cast<ElementRecord>().ToList());
             var copyAll = Button(dialog, "Copy all IDs", false); copyAll.Click += (s, e) => copy(records);
             var inspect = Button(dialog, "Properties", false); inspect.Click += (s, e) => { var record = table.SelectedItem as ElementRecord; if (record != null) properties(record); };
-            var show = Button(dialog, "View in Revit / Close", true); show.Click += (s, e) =>
+            var show = Button(dialog, "View in Revit", true); show.Click += (s, e) =>
             {
                 var selected = table.SelectedItems.Cast<ElementRecord>().ToList();
                 if (selected.Count == 0) { MessageBox.Show(dialog, "Select at least one element.", "View in Revit"); return; }
-                dialog.Close(); view(selected);
+                view(selected);
             };
             var close = Button(dialog, "Close", false); close.Click += (s, e) => dialog.Close();
             foreach (var action in new[] { copySelected, copyAll, inspect, show, close }) actions.Children.Add(action);
